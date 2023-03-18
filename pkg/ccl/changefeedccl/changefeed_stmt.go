@@ -1501,6 +1501,7 @@ func maybeUpgradePreProductionReadyExpression(
 	sd := sessiondatapb.SessionData{
 		Database:   "",
 		UserProto:  jobExec.User().EncodeProto(),
+		UserID:     jobExec.UserID(),
 		Internal:   true,
 		SearchPath: sessiondata.DefaultSearchPathForUser(jobExec.User()).GetPathArray(),
 	}

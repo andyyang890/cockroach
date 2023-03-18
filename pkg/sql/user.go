@@ -578,6 +578,7 @@ func (p *planner) setRole(ctx context.Context, local bool, s username.SQLUsernam
 			// The "none" user does resets the SessionUserProto in a SET ROLE.
 			if becomeUser.IsNoneRole() {
 				if m.data.SessionUserProto.Decode().Normalized() != "" {
+					// TODO(yang)
 					m.data.UserProto = m.data.SessionUserProto
 					m.data.SessionUserProto = ""
 				}
@@ -590,6 +591,7 @@ func (p *planner) setRole(ctx context.Context, local bool, s username.SQLUsernam
 			if m.data.SessionUserProto == "" {
 				m.data.SessionUserProto = m.data.UserProto
 			}
+			// TODO(yang)
 			m.data.UserProto = becomeUser.EncodeProto()
 			m.data.SearchPath = m.data.SearchPath.WithUserSchemaName(m.data.User().Normalized())
 			return nil

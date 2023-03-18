@@ -2537,7 +2537,8 @@ func NewFakeSessionData(sv *settings.Values, opName string) *sessiondata.Session
 			// And in fact it is used by `current_schemas()`, which, although is a pure
 			// function, takes arguments which might be impure (so it can't always be
 			// pre-evaluated).
-			Database:      "",
+			Database: "",
+			// TODO(yang)
 			UserProto:     username.NodeUserName().EncodeProto(),
 			VectorizeMode: sessiondatapb.VectorizeExecMode(VectorizeClusterMode.Get(sv)),
 			Internal:      true,

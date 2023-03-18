@@ -34,6 +34,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/upgrade"
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
+	"github.com/lib/pq/oid"
 )
 
 // planHookFn is a function that can intercept a statement being planned and
@@ -109,6 +110,7 @@ type PlanHookState interface {
 	LeaseMgr() *lease.Manager
 	ExprEvaluator(op string) exprutil.Evaluator
 	User() username.SQLUsername
+	UserID() oid.Oid
 	AuthorizationAccessor
 	// The role create/drop call into OSS code to reuse plan nodes.
 	// TODO(mberhault): it would be easier to just pass a planner to plan hooks.

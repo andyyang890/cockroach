@@ -731,6 +731,7 @@ func applyInternalExecutorSessionExceptions(sd *sessiondata.SessionData) {
 // applyOverrides overrides the respective fields from sd for all the fields set on o.
 func applyOverrides(o sessiondata.InternalExecutorOverride, sd *sessiondata.SessionData) {
 	if !o.User.Undefined() {
+		// TODO(yang)
 		sd.UserProto = o.User.EncodeProto()
 	}
 	if o.Database != "" {
@@ -1380,6 +1381,7 @@ func (ief *InternalDB) newInternalExecutorWithTxn(
 	if sd == nil {
 		sd = NewFakeSessionData(sv, "" /* opName */)
 		sd.UserProto = username.RootUserName().EncodeProto()
+		sd.UserID = username.RootUserID
 	}
 
 	schemaChangerState := &SchemaChangerState{

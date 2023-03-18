@@ -19,6 +19,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondatapb"
 	"github.com/cockroachdb/cockroach/pkg/upgrade"
+	"github.com/lib/pq/oid"
 )
 
 // plannerJobExecContext is a wrapper to implement JobExecContext with a planner
@@ -59,6 +60,7 @@ func (e *plannerJobExecContext) ExecCfg() *ExecutorConfig        { return e.p.Ex
 func (e *plannerJobExecContext) DistSQLPlanner() *DistSQLPlanner { return e.p.DistSQLPlanner() }
 func (e *plannerJobExecContext) LeaseMgr() *lease.Manager        { return e.p.LeaseMgr() }
 func (e *plannerJobExecContext) User() username.SQLUsername      { return e.p.User() }
+func (e *plannerJobExecContext) UserID() oid.Oid                 { return e.p.UserID() }
 func (e *plannerJobExecContext) MigrationJobDeps() upgrade.JobDeps {
 	return e.p.MigrationJobDeps()
 }
@@ -88,6 +90,7 @@ type JobExecContext interface {
 	DistSQLPlanner() *DistSQLPlanner
 	LeaseMgr() *lease.Manager
 	User() username.SQLUsername
+	UserID() oid.Oid
 	MigrationJobDeps() upgrade.JobDeps
 	SpanConfigReconciler() spanconfig.Reconciler
 	SpanStatsConsumer() keyvisualizer.SpanStatsConsumer

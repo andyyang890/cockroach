@@ -375,6 +375,7 @@ func newInternalPlanner(
 	if sd.SessionData.Database == "" {
 		sd.SessionData.Database = "system"
 	}
+	// TODO(yang)
 	sd.SessionData.UserProto = user.EncodeProto()
 	sd.SessionData.Internal = true
 	sds := sessiondata.NewStack(sd)
@@ -641,6 +642,10 @@ func (p *planner) regionsProvider() *regions.Provider {
 
 func (p *planner) User() username.SQLUsername {
 	return p.SessionData().User()
+}
+
+func (p *planner) UserID() oid.Oid {
+	return p.SessionData().UserID
 }
 
 func (p *planner) TemporarySchemaName() string {

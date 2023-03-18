@@ -115,6 +115,7 @@ func UnmarshalNonLocal(proto sessiondatapb.SessionData) (*SessionData, error) {
 			proto.SearchPath,
 		).WithTemporarySchemaName(
 			proto.TemporarySchemaName,
+			// TODO(yang)
 		).WithUserSchemaName(proto.UserProto.Decode().Normalized()),
 		SequenceState: seqState,
 		Location:      location,

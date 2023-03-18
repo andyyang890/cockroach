@@ -162,6 +162,7 @@ func TestInternalFullTableScan(t *testing.T) {
 			SessionData: sessiondatapb.SessionData{
 				Database:  "db",
 				UserProto: username.RootUserName().EncodeProto(),
+				UserID:    username.RootUserID,
 			},
 			LocalOnlySessionData: sessiondatapb.LocalOnlySessionData{
 				DisallowFullTableScans: true,
@@ -332,6 +333,7 @@ func TestSessionBoundInternalExecutor(t *testing.T) {
 			SessionData: sessiondatapb.SessionData{
 				Database:  expDB,
 				UserProto: username.RootUserName().EncodeProto(),
+				UserID:    username.RootUserID,
 			},
 			SequenceState: &sessiondata.SequenceState{},
 		})
@@ -398,6 +400,7 @@ func TestInternalExecAppNameInitialization(t *testing.T) {
 			&sessiondata.SessionData{
 				SessionData: sessiondatapb.SessionData{
 					UserProto:       username.RootUserName().EncodeProto(),
+					UserID:          username.RootUserID,
 					Database:        "defaultdb",
 					ApplicationName: "appname_findme",
 				},

@@ -900,6 +900,7 @@ func (s *Server) GetLocalIndexStatistics() *idxusage.LocalIndexUsageStats {
 func newSessionData(args SessionArgs) *sessiondata.SessionData {
 	sd := &sessiondata.SessionData{
 		SessionData: sessiondatapb.SessionData{
+			// TODO(yang)
 			UserProto: args.User.EncodeProto(),
 		},
 		LocalUnmigratableSessionData: sessiondata.LocalUnmigratableSessionData{
