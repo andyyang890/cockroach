@@ -28,6 +28,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/stop"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil/singleflight"
+	"github.com/lib/pq/oid"
 )
 
 // CacheEnabledSettingName is the name of the CacheEnabled cluster setting.
@@ -65,6 +66,8 @@ type Cache struct {
 type AuthInfo struct {
 	// UserExists is set to true if the user has a row in system.users.
 	UserExists bool
+	// UserID is the user_id value in the user's row in system.users.
+	UserID oid.Oid
 	// CanLoginSQLRoleOpt is set to false if the user has the NOLOGIN or NOSQLLOGIN role option.
 	CanLoginSQLRoleOpt bool
 	// CanLoginDBConsoleRoleOpt is set to false if the user has NOLOGIN role option.

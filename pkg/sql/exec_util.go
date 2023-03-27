@@ -118,6 +118,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
+	"github.com/lib/pq/oid"
 )
 
 // ClusterOrganization is the organization name.
@@ -2114,7 +2115,9 @@ type SessionDefaults map[string]string
 
 // SessionArgs contains arguments for serving a client connection.
 type SessionArgs struct {
+	// TODO(yang): See where else this is set and update accordingly.
 	User                        username.SQLUsername
+	UserID                      oid.Oid
 	IsSuperuser                 bool
 	IsSSL                       bool
 	SystemIdentity              username.SQLUsername

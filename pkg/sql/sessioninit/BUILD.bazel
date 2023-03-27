@@ -23,6 +23,7 @@ go_library(
         "//pkg/util/stop",
         "//pkg/util/syncutil",
         "//pkg/util/syncutil/singleflight",
+        "@com_github_lib_pq//oid",
     ],
 )
 
