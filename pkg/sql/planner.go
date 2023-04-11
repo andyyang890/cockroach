@@ -645,7 +645,7 @@ func (p *planner) User() username.SQLUsername {
 }
 
 func (p *planner) UserID() oid.Oid {
-	return p.SessionData().UserID
+	return p.SessionData().UserID()
 }
 
 func (p *planner) TemporarySchemaName() string {

@@ -16,6 +16,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
+	"github.com/lib/pq/oid"
 )
 
 // GetFloatPrec computes a precision suitable for a call to
@@ -86,7 +87,23 @@ func VectorizeExecModeFromString(val string) (VectorizeExecMode, bool) {
 
 // User retrieves the current user.
 func (s *SessionData) User() username.SQLUsername {
-	return s.UserProto.Decode()
+	return s.LoggedInUser.UserName.Decode()
+}
+
+// UserID retrieves the current user's ID.
+func (s *SessionData) UserID() oid.Oid {
+	return s.LoggedInUser.UserID
+}
+
+func NewSessionUserIdentity(userName username.SQLUsername, userID oid.Oid) *SessionUserIdentity {
+	s := &SessionUserIdentity{}
+	s.SetUser(userName, userID)
+	return s
+}
+
+func (s *SessionUserIdentity) SetUser(userName username.SQLUsername, userID oid.Oid) {
+	s.UserName = userName.EncodeProto()
+	s.UserID = userID
 }
 
 // SystemIdentity retrieves the session's system identity.

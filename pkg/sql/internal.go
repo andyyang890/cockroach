@@ -1381,7 +1381,7 @@ func (ief *InternalDB) newInternalExecutorWithTxn(
 	if sd == nil {
 		sd = NewFakeSessionData(sv, "" /* opName */)
 		sd.UserProto = username.RootUserName().EncodeProto()
-		sd.UserID = username.RootUserID
+		sd.LoggedInUser.SetUser(username.RootUserName(), username.RootUserID)
 	}
 
 	schemaChangerState := &SchemaChangerState{

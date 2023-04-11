@@ -1499,11 +1499,11 @@ func maybeUpgradePreProductionReadyExpression(
 	// use any functions that depend on session data.  Thus, it is safe to use
 	// minimal session data.
 	sd := sessiondatapb.SessionData{
-		Database:   "",
-		UserProto:  jobExec.User().EncodeProto(),
-		UserID:     jobExec.UserID(),
-		Internal:   true,
-		SearchPath: sessiondata.DefaultSearchPathForUser(jobExec.User()).GetPathArray(),
+		Database:     "",
+		UserProto:    jobExec.User().EncodeProto(),
+		LoggedInUser: sessiondatapb.NewSessionUserIdentity(jobExec.User(), jobExec.UserID()),
+		Internal:     true,
+		SearchPath:   sessiondata.DefaultSearchPathForUser(jobExec.User()).GetPathArray(),
 	}
 	details.SessionData = &sd
 
