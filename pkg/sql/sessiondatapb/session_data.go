@@ -87,21 +87,21 @@ func VectorizeExecModeFromString(val string) (VectorizeExecMode, bool) {
 
 // User retrieves the current user.
 func (s *SessionData) User() username.SQLUsername {
-	return s.LoggedInUser.UserName.Decode()
+	return s.UserIdentity.UserName.Decode()
 }
 
 // UserID retrieves the current user's ID.
 func (s *SessionData) UserID() oid.Oid {
-	return s.LoggedInUser.UserID
+	return s.UserIdentity.UserID
 }
 
-func NewSessionUserIdentity(userName username.SQLUsername, userID oid.Oid) *SessionUserIdentity {
-	s := &SessionUserIdentity{}
+func NewUserIdentity(userName username.SQLUsername, userID oid.Oid) *UserIdentity {
+	s := &UserIdentity{}
 	s.SetUser(userName, userID)
 	return s
 }
 
-func (s *SessionUserIdentity) SetUser(userName username.SQLUsername, userID oid.Oid) {
+func (s *UserIdentity) SetUser(userName username.SQLUsername, userID oid.Oid) {
 	s.UserName = userName.EncodeProto()
 	s.UserID = userID
 }

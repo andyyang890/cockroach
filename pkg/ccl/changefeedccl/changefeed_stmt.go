@@ -1500,8 +1500,7 @@ func maybeUpgradePreProductionReadyExpression(
 	// minimal session data.
 	sd := sessiondatapb.SessionData{
 		Database:     "",
-		UserProto:    jobExec.User().EncodeProto(),
-		LoggedInUser: sessiondatapb.NewSessionUserIdentity(jobExec.User(), jobExec.UserID()),
+		UserIdentity: sessiondatapb.NewUserIdentity(jobExec.User(), jobExec.UserID()),
 		Internal:     true,
 		SearchPath:   sessiondata.DefaultSearchPathForUser(jobExec.User()).GetPathArray(),
 	}

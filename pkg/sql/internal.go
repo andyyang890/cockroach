@@ -733,6 +733,7 @@ func applyOverrides(o sessiondata.InternalExecutorOverride, sd *sessiondata.Sess
 	if !o.User.Undefined() {
 		// TODO(yang)
 		sd.UserProto = o.User.EncodeProto()
+		sd.UserIdentity.SetUser(o.User)
 	}
 	if o.Database != "" {
 		sd.Database = o.Database

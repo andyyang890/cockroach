@@ -29,7 +29,8 @@ message SessionData {
   // session. This can be used for logging and per-application statistics.
   string application_name = 2;
   // User is the name of the user logged into the session.
-  string user_proto = 3 [(gogoproto.casttype) = "github.com/cockroachdb/cockroach/pkg/security/username.SQLUsernameProto"];
+  //string user_proto = 3 [(gogoproto.casttype) = "github.com/cockroachdb/cockroach/pkg/security/username.SQLUsernameProto"];
+  reserved 3;
   // DataConversion gives access to the data conversion configuration.
   DataConversionConfig data_conversion_config = 4 [(gogoproto.nullable) = false];
   // VectorizeMode indicates which kinds of queries to use vectorized execution
@@ -112,12 +113,8 @@ message SessionData {
   // that is used for builtins like to_tsvector and to_tsquery if no
   // text search configuration is explicitly passed in.
   string default_text_search_config = 26;
-  // TODO(yang): Create a new field and couple them together.
-  // Only expose a function on the new field that accepts both and deprecates the old one.
-  // UserID is the ID of the user logged into the session.
-  //uint32 user_id = 27 [(gogoproto.nullable) = false, (gogoproto.customname) = "UserID", (gogoproto.customtype) = "github.com/lib/pq/oid.Oid"];
-  // LoggedInUser is the identity of the user logged into the session.
-  SessionUserIdentity logged_in_user = 27;
+  // UserIdentity is the identity of the user logged into the session.
+  UserIdentity user_identity = 27;
 }
 
 // DataConversionConfig contains the parameters that influence the output
@@ -171,10 +168,10 @@ message SequenceState {
   uint32 last_seq_incremented = 2;
 }
 
-// SessionUserIdentity contains info about the current user's identity.
-// Its fields should not be modified directly or independently. Instead,
-// use its SetUser receiver.
-message SessionUserIdentity {
+// UserIdentity contains fields pertaining to a user's identity.
+// Its fields should not be modified directly or independently.
+// Instead, use its SetUser receiver.
+message UserIdentity {
   string user_name = 1 [(gogoproto.casttype) = "github.com/cockroachdb/cockroach/pkg/security/username.SQLUsernameProto"];
   uint32 user_id = 2 [(gogoproto.customname) = "UserID", (gogoproto.customtype) = "github.com/lib/pq/oid.Oid", (gogoproto.nullable) = false];
 }

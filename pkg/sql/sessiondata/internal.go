@@ -13,6 +13,7 @@ package sessiondata
 import (
 	"github.com/cockroachdb/cockroach/pkg/security/username"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondatapb"
+	"github.com/lib/pq/oid"
 )
 
 // InternalExecutorOverride is used by the Executor interface
@@ -20,6 +21,8 @@ import (
 type InternalExecutorOverride struct {
 	// User represents the user that the query will run under.
 	User username.SQLUsername
+	// UserID is the user's user ID.
+	UserID oid.Oid
 	// Database represents the default database for the query.
 	Database string
 	// ApplicationName represents the application that the query runs under.

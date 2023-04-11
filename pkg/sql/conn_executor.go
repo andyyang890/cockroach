@@ -900,8 +900,7 @@ func (s *Server) GetLocalIndexStatistics() *idxusage.LocalIndexUsageStats {
 func newSessionData(args SessionArgs) *sessiondata.SessionData {
 	sd := &sessiondata.SessionData{
 		SessionData: sessiondatapb.SessionData{
-			// TODO(yang)
-			UserProto: args.User.EncodeProto(),
+			UserIdentity: sessiondatapb.NewUserIdentity(args.User, args.UserID),
 		},
 		LocalUnmigratableSessionData: sessiondata.LocalUnmigratableSessionData{
 			RemoteAddr: args.RemoteAddr,

@@ -116,7 +116,7 @@ func UnmarshalNonLocal(proto sessiondatapb.SessionData) (*SessionData, error) {
 		).WithTemporarySchemaName(
 			proto.TemporarySchemaName,
 			// TODO(yang)
-		).WithUserSchemaName(proto.UserProto.Decode().Normalized()),
+		).WithUserSchemaName(proto.User().Normalized()),
 		SequenceState: seqState,
 		Location:      location,
 	}, nil
