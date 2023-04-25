@@ -41,6 +41,10 @@ const (
 	// These descriptors should have all the correct privileges and the owner field
 	// explicitly set. These descriptors should be strictly validated.
 	Version21_2
+
+	// UsernameAndUserIDVersion corresponds to descriptors created in 23.2
+	// and later. These descriptors should store both usernames and user IDs.
+	UsernameAndUserIDVersion
 )
 
 // Owner accesses the owner field.

@@ -35,7 +35,8 @@ message PrivilegeDescriptor {
   optional string owner_proto = 2 [(gogoproto.nullable) = false,
                                    (gogoproto.casttype) = "github.com/cockroachdb/cockroach/pkg/security/username.SQLUsernameProto"];
   optional uint32 version = 3 [(gogoproto.nullable) = false,
-                              (gogoproto.casttype) = "PrivilegeDescVersion"];
+                               (gogoproto.casttype) = "PrivilegeDescVersion"];
+  // TODO(yang): Add owner_id.
 }
 
 // DefaultPrivilegesForRole contains the default privileges for a role.
