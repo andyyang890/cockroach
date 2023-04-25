@@ -22,6 +22,9 @@ message UserPrivileges {
   // privileges is a bitfield of 1<<Privilege values.
   optional uint64 privileges = 2 [(gogoproto.nullable) = false];
   optional uint64 with_grant_option = 3 [(gogoproto.nullable) = false];
+  optional uint32 user_id = 4 [(gogoproto.nullable) = false,
+                               (gogoproto.customname) = "UserID",
+                               (gogoproto.casttype) = "github.com/cockroachdb/cockroach/pkg/security/username.SQLUserID"];
 }
 
 // PrivilegeDescriptor describes a list of users and attached
