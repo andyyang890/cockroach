@@ -204,7 +204,7 @@ func maybeConvertIncompatibleDBPrivilegesToDefaultPrivileges(
 		role := defaultPrivileges.FindOrCreateUser(catpb.DefaultPrivilegesRole{ForAllRoles: true})
 		tableDefaultPrivilegesForAllRoles := role.DefaultPrivilegesPerObject[privilege.Tables]
 
-		defaultPrivilegesForUser := tableDefaultPrivilegesForAllRoles.FindOrCreateUser(user.User())
+		defaultPrivilegesForUser := tableDefaultPrivilegesForAllRoles.FindOrCreateUser(user.User(), user.UserID)
 		defaultPrivilegesForUser.Privileges |= incompatiblePrivileges
 
 		role.DefaultPrivilegesPerObject[privilege.Tables] = tableDefaultPrivilegesForAllRoles

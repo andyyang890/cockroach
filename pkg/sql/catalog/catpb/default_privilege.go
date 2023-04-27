@@ -25,7 +25,8 @@ import (
 //	role should be populated
 //	forAllRoles should be true.
 type DefaultPrivilegesRole struct {
-	Role        username.SQLUsername
+	Role username.SQLUsername
+	// TODO(yang): Add here.
 	ForAllRoles bool
 }
 

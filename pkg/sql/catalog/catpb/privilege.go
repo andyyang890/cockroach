@@ -80,7 +80,10 @@ func (p PrivilegeDescriptor) FindUser(user username.SQLUsername) (*UserPrivilege
 }
 
 // FindOrCreateUser looks for a specific user in the list, creating it if needed.
-func (p *PrivilegeDescriptor) FindOrCreateUser(user username.SQLUsername) *UserPrivileges {
+func (p *PrivilegeDescriptor) FindOrCreateUser(
+	user username.SQLUsername, userID username.SQLUserID,
+) *UserPrivileges {
+	// TODO(yang): Need to check the version gate to determine whether to sort by name or ID.
 	idx := sort.Search(len(p.Users), func(i int) bool {
 		return !p.Users[i].User().LessThan(user)
 	})
@@ -145,12 +148,13 @@ func NewVirtualSchemaPrivilegeDescriptor() *PrivilegeDescriptor {
 // the public role. It is used for temporary schemas.
 func NewTemporarySchemaPrivilegeDescriptor() *PrivilegeDescriptor {
 	p := NewBasePrivilegeDescriptor(username.AdminRoleName())
-	p.Grant(username.PublicRoleName(), privilege.List{privilege.CREATE, privilege.USAGE}, false /* withGrantOption */)
+	p.Grant(username.PublicRoleName(), username.PublicRoleID, privilege.List{privilege.CREATE, privilege.USAGE}, false /* withGrantOption */)
 	return p
 }
 
 // NewPrivilegeDescriptor returns a privilege descriptor for the given
 // user with the specified list of privileges.
+// TODO this needs to write it
 func NewPrivilegeDescriptor(
 	user username.SQLUsername,
 	priv privilege.List,
@@ -185,7 +189,7 @@ func NewBasePrivilegeDescriptor(owner username.SQLUsername) *PrivilegeDescriptor
 // Here we also add the CONNECT privilege for the database.
 func NewBaseDatabasePrivilegeDescriptor(owner username.SQLUsername) *PrivilegeDescriptor {
 	p := NewBasePrivilegeDescriptor(owner)
-	p.Grant(username.PublicRoleName(), privilege.List{privilege.CONNECT}, false /* withGrantOption */)
+	p.Grant(username.PublicRoleName(), username.PublicRoleID, privilege.List{privilege.CONNECT}, false /* withGrantOption */)
 	return p
 }
 
@@ -201,7 +205,7 @@ func NewPublicSchemaPrivilegeDescriptor() *PrivilegeDescriptor {
 	// By default, everyone has USAGE and CREATE on the public schema.
 	// Once https://github.com/cockroachdb/cockroach/issues/70266 is resolved,
 	// the public role will no longer have CREATE privileges.
-	p.Grant(username.PublicRoleName(), privilege.List{privilege.CREATE, privilege.USAGE}, false)
+	p.Grant(username.PublicRoleName(), username.PublicRoleID, privilege.List{privilege.CREATE, privilege.USAGE}, false)
 	return p
 }
 
@@ -234,9 +238,12 @@ func (p *PrivilegeDescriptor) CheckGrantOptions(
 
 // Grant adds new privileges to this descriptor for a given list of users.
 func (p *PrivilegeDescriptor) Grant(
-	user username.SQLUsername, privList privilege.List, withGrantOption bool,
+	user username.SQLUsername,
+	userID username.SQLUserID,
+	privList privilege.List,
+	withGrantOption bool,
 ) {
-	userPriv := p.FindOrCreateUser(user)
+	userPriv := p.FindOrCreateUser(user, userID)
 	if privilege.ALL.IsSetIn(userPriv.WithGrantOption) && privilege.ALL.IsSetIn(userPriv.Privileges) {
 		// User already has 'ALL' privilege: no-op.
 		// If userPriv.WithGrantOption has ALL, then userPriv.Privileges must also have ALL.

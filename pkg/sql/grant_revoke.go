@@ -83,13 +83,13 @@ func (p *planner) Grant(ctx context.Context, n *tree.Grant) (planNode, error) {
 			grantOn:         grantOn,
 		},
 		changePrivilege: func(
-			privDesc *catpb.PrivilegeDescriptor, privileges privilege.List, grantee username.SQLUsername,
+			privDesc *catpb.PrivilegeDescriptor, privileges privilege.List, grantee username.SQLUsername, granteeID username.SQLUserID,
 		) (changed bool, retErr error) {
 			// Grant the desired privileges to grantee, and return true
 			// if privileges have actually been changed due to this `GRANT``.
-			granteePrivsBeforeGrant := *(privDesc.FindOrCreateUser(grantee))
-			privDesc.Grant(grantee, privileges, n.WithGrantOption)
-			granteePrivsAfterGrant := *(privDesc.FindOrCreateUser(grantee))
+			granteePrivsBeforeGrant := *(privDesc.FindOrCreateUser(grantee, granteeID))
+			privDesc.Grant(grantee, granteeID, privileges, n.WithGrantOption)
+			granteePrivsAfterGrant := *(privDesc.FindOrCreateUser(grantee, granteeID))
 			return granteePrivsBeforeGrant != granteePrivsAfterGrant, nil
 		},
 	}, nil
@@ -173,7 +173,7 @@ type changePrivilegesNode struct {
 
 type changeDescriptorBackedPrivilegesNode struct {
 	changePrivilegesNode
-	changePrivilege func(*catpb.PrivilegeDescriptor, privilege.List, username.SQLUsername) (changed bool, retErr error)
+	changePrivilege func(*catpb.PrivilegeDescriptor, privilege.List, username.SQLUsername, username.SQLUserID) (changed bool, retErr error)
 }
 
 type changeNonDescriptorBackedPrivilegesNode struct {

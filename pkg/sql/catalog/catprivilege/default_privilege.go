@@ -344,6 +344,7 @@ func foldPrivileges(
 		// Even though the owner's ALL privileges are implicit, we still need this
 		// because it's possible to modify the default privileges to be more
 		// fine-grained than ALL.
+		// TODO(yang): Examine the call site of the enclosing func.
 		user := privileges.FindOrCreateUser(role.Role)
 		if user.WithGrantOption == 0 {
 			setRoleHasAllOnTargetObject(defaultPrivilegesForRole, true, targetObject)
@@ -449,9 +450,11 @@ func setPublicHasUsageOnTypes(
 func applyDefaultPrivileges(
 	p *catpb.PrivilegeDescriptor,
 	user username.SQLUsername,
+	userID username.SQLUserID,
 	privList privilege.List,
 	grantOptionList privilege.List,
 ) {
+	// TODO(yang): Examine the call site of the enclosing func.
 	userPriv := p.FindOrCreateUser(user)
 	newUserPrivs, newUserGrantOptions := ApplyDefaultPrivileges(
 		userPriv.Privileges, userPriv.WithGrantOption, privList, grantOptionList,

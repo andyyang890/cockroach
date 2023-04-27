@@ -93,8 +93,8 @@ func MaybeFixPrivileges(
 
 	changed := false
 
-	fixSuperUser := func(user username.SQLUsername) {
-		privs := p.FindOrCreateUser(user)
+	fixSuperUser := func(user username.SQLUsername, userID username.SQLUserID) {
+		privs := p.FindOrCreateUser(user, userID)
 		oldPrivilegeBits := privs.Privileges
 		if oldPrivilegeBits != allowedPrivilegesBits {
 			if privilege.ALL.IsSetIn(allowedPrivilegesBits) {
@@ -107,8 +107,8 @@ func MaybeFixPrivileges(
 	}
 
 	// Check "root" user and "admin" role.
-	fixSuperUser(username.RootUserName())
-	fixSuperUser(username.AdminRoleName())
+	fixSuperUser(username.RootUserName(), username.RootUserID)
+	fixSuperUser(username.AdminRoleName(), username.AdminRoleID)
 
 	if objectType == privilege.Table || objectType == privilege.Database {
 		changed = MaybeFixUsagePrivForTablesAndDBs(&p) || changed
