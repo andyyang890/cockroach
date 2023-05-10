@@ -26,7 +26,7 @@ import (
 
 	"github.com/ProtonMail/gopenpgp/v2/armor"
 	pgpconstants "github.com/ProtonMail/gopenpgp/v2/constants"
-	_ "github.com/ProtonMail/gopenpgp/v2/helper"
+	pgphelper "github.com/ProtonMail/gopenpgp/v2/helper"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/sql/sem/builtins/builtinconstants"
@@ -217,6 +217,83 @@ var pgcryptoBuiltins = map[string]builtinDefinition{
 			},
 			Info:       "Calculates hashed MAC for `data` with key `key`. `type` is the same as in `digest()`.",
 			Volatility: volatility.Immutable,
+		},
+	),
+
+	"pgp_pub_decrypt": makeBuiltin(
+		tree.FunctionProperties{Category: builtinconstants.CategoryCrypto},
+		tree.Overload{
+			Types:      tree.ParamTypes{{Name: "msg", Typ: types.Bytes}, {Name: "key", Typ: types.Bytes}},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(_ context.Context, _ *eval.Context, args tree.Datums) (tree.Datum, error) {
+				ciphertext := []byte(tree.MustBeDBytes(args[0]))
+				privateKey := []byte(tree.MustBeDBytes(args[1]))
+				armoredCiphertext, err := armor.ArmorWithType(ciphertext, pgpconstants.PGPMessageHeader)
+				if err != nil {
+					return nil, err
+				}
+				armoredPrivateKey, err := armor.ArmorWithType(privateKey, pgpconstants.PrivateKeyHeader)
+				if err != nil {
+					return nil, err
+				}
+				plaintext, err := pgphelper.DecryptMessageArmored(armoredPrivateKey, nil /* passphrase */, armoredCiphertext)
+				if err != nil {
+					return nil, err
+				}
+				return tree.NewDString(plaintext), nil
+			},
+			Info:       "Decrypt a public key-encrypted message `msg` with private key `key`.",
+			Volatility: volatility.Immutable,
+		},
+		tree.Overload{
+			Types:      tree.ParamTypes{{Name: "msg", Typ: types.Bytes}, {Name: "key", Typ: types.Bytes}, {Name: "psw", Typ: types.String}},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(_ context.Context, _ *eval.Context, args tree.Datums) (tree.Datum, error) {
+				ciphertext := []byte(tree.MustBeDBytes(args[0]))
+				privateKey := []byte(tree.MustBeDBytes(args[1]))
+				passphrase := []byte(tree.MustBeDString(args[2]))
+				armoredCiphertext, err := armor.ArmorWithType(ciphertext, pgpconstants.PGPMessageHeader)
+				if err != nil {
+					return nil, err
+				}
+				armoredPrivateKey, err := armor.ArmorWithType(privateKey, pgpconstants.PrivateKeyHeader)
+				if err != nil {
+					return nil, err
+				}
+				plaintext, err := pgphelper.DecryptMessageArmored(armoredPrivateKey, passphrase, armoredCiphertext)
+				if err != nil {
+					return nil, err
+				}
+				return tree.NewDString(plaintext), nil
+			},
+			Info: "Decrypt a public key-encrypted message `msg` with private key `key`" +
+				"that is password-protected with password `psw`.",
+			Volatility: volatility.Immutable,
+		},
+	),
+
+	// TODO(yang): This function needs to return an error if given a secret key.
+	"pgp_pub_encrypt": makeBuiltin(
+		tree.FunctionProperties{Category: builtinconstants.CategoryCrypto},
+		tree.Overload{
+			Types:      tree.ParamTypes{{Name: "data", Typ: types.String}, {Name: "key", Typ: types.Bytes}},
+			ReturnType: tree.FixedReturnType(types.Bytes),
+			Fn: func(_ context.Context, _ *eval.Context, args tree.Datums) (tree.Datum, error) {
+				plaintext := string(tree.MustBeDString(args[0]))
+				publicKey := []byte(tree.MustBeDBytes(args[1]))
+				armoredPublicKey, err := armor.ArmorKey(publicKey)
+				armoredCiphertext, err := pgphelper.EncryptMessageArmored(armoredPublicKey, plaintext)
+				if err != nil {
+					return nil, err
+				}
+				ciphertext, err := armor.Unarmor(armoredCiphertext)
+				if err != nil {
+					return nil, err
+				}
+				return tree.NewDBytes(tree.DBytes(ciphertext)), nil
+			},
+			Info:       "Encrypt `data` with public PGP key `key`.",
+			Volatility: volatility.Volatile,
 		},
 	),
 }
