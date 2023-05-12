@@ -24,6 +24,8 @@ import (
 	"strings"
 	_ "unsafe" // required to use go:linkname
 
+	"github.com/ProtonMail/gopenpgp/v2/armor"
+	pgpconstants "github.com/ProtonMail/gopenpgp/v2/constants"
 	_ "github.com/ProtonMail/gopenpgp/v2/helper"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
@@ -44,6 +46,23 @@ func init() {
 }
 
 var pgcryptoBuiltins = map[string]builtinDefinition{
+	"armor": makeBuiltin(
+		tree.FunctionProperties{Category: builtinconstants.CategoryCrypto},
+		tree.Overload{
+			Types:      tree.ParamTypes{{Name: "data", Typ: types.Bytes}},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(_ context.Context, _ *eval.Context, args tree.Datums) (tree.Datum, error) {
+				data := []byte(tree.MustBeDBytes(args[0]))
+				res, err := armor.ArmorWithTypeAndCustomHeaders(data, pgpconstants.PGPMessageHeader, "" /* version */, "" /* comment */)
+				if err != nil {
+					return nil, err
+				}
+				return tree.NewDString(res), nil
+			},
+			Info:       "Converts binary data to a PGP ASCII-armored string.",
+			Volatility: volatility.Immutable,
+		},
+	),
 
 	"crypt": makeBuiltin(
 		tree.FunctionProperties{Category: builtinconstants.CategoryCrypto},
@@ -60,6 +79,24 @@ var pgcryptoBuiltins = map[string]builtinDefinition{
 				return tree.NewDString(hash), nil
 			},
 			Info:       "Generates a hash based on a password and salt. The hash algorithm and number of rounds if applicable are encoded in the salt.",
+			Volatility: volatility.Immutable,
+		},
+	),
+
+	"dearmor": makeBuiltin(
+		tree.FunctionProperties{Category: builtinconstants.CategoryCrypto},
+		tree.Overload{
+			Types:      tree.ParamTypes{{Name: "data", Typ: types.String}},
+			ReturnType: tree.FixedReturnType(types.Bytes),
+			Fn: func(_ context.Context, _ *eval.Context, args tree.Datums) (tree.Datum, error) {
+				data := string(tree.MustBeDString(args[0]))
+				res, err := armor.Unarmor(data)
+				if err != nil {
+					return nil, err
+				}
+				return tree.NewDBytes(tree.DBytes(res)), nil
+			},
+			Info:       "Converts a PGP ASCII-armored string to binary data.",
 			Volatility: volatility.Immutable,
 		},
 	),
