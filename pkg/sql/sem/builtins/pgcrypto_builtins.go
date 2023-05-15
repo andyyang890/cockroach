@@ -296,6 +296,52 @@ var pgcryptoBuiltins = map[string]builtinDefinition{
 			Volatility: volatility.Volatile,
 		},
 	),
+
+	"pgp_sym_decrypt": makeBuiltin(
+		tree.FunctionProperties{Category: builtinconstants.CategoryCrypto},
+		tree.Overload{
+			Types:      tree.ParamTypes{{Name: "msg", Typ: types.Bytes}, {Name: "psw", Typ: types.String}},
+			ReturnType: tree.FixedReturnType(types.String),
+			Fn: func(_ context.Context, _ *eval.Context, args tree.Datums) (tree.Datum, error) {
+				ciphertext := []byte(tree.MustBeDBytes(args[0]))
+				symmetricKey := []byte(tree.MustBeDString(args[1]))
+				armoredCiphertext, err := armor.ArmorWithType(ciphertext, pgpconstants.PGPMessageHeader)
+				if err != nil {
+					return nil, err
+				}
+				plaintext, err := pgphelper.DecryptMessageWithPassword(symmetricKey, armoredCiphertext)
+				if err != nil {
+					return nil, err
+				}
+				return tree.NewDString(plaintext), nil
+			},
+			Info:       "Decrypt a symmetric key-encrypted PGP message `msg` using symmetric key `psw`.",
+			Volatility: volatility.Immutable,
+		},
+	),
+
+	"pgp_sym_encrypt": makeBuiltin(
+		tree.FunctionProperties{Category: builtinconstants.CategoryCrypto},
+		tree.Overload{
+			Types:      tree.ParamTypes{{Name: "data", Typ: types.String}, {Name: "psw", Typ: types.String}},
+			ReturnType: tree.FixedReturnType(types.Bytes),
+			Fn: func(_ context.Context, _ *eval.Context, args tree.Datums) (tree.Datum, error) {
+				plaintext := string(tree.MustBeDString(args[0]))
+				password := []byte(tree.MustBeDString(args[1]))
+				armoredCiphertext, err := pgphelper.EncryptMessageWithPassword(password, plaintext)
+				if err != nil {
+					return nil, err
+				}
+				ciphertext, err := armor.Unarmor(armoredCiphertext)
+				if err != nil {
+					return nil, err
+				}
+				return tree.NewDBytes(tree.DBytes(ciphertext)), nil
+			},
+			Info:       "Encrypt `data` with symmetric PGP key `psw`.",
+			Volatility: volatility.Volatile,
+		},
+	),
 }
 
 func crypt(password string, salt string) (string, error) {

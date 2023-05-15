@@ -2387,6 +2387,8 @@ var builtinOidsArray = []string{
 	2414: `pgp_pub_encrypt(data: string, key: bytes) -> bytes`,
 	2415: `pgp_pub_decrypt(msg: bytes, key: bytes) -> string`,
 	2416: `pgp_pub_decrypt(msg: bytes, key: bytes, psw: string) -> string`,
+	2417: `pgp_sym_encrypt(data: string, psw: string) -> bytes`,
+	2418: `pgp_sym_decrypt(msg: bytes, psw: string) -> string`,
 }
 
 var builtinOidsBySignature map[string]oid.Oid
