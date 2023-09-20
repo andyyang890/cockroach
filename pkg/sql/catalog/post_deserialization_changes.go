@@ -127,4 +127,8 @@ const (
 	// FixSecondaryIndexEncodingType indicates that a secondary index had its
 	// encoding type fixed, so it is not incorrectly marked as a primary index.
 	FixSecondaryIndexEncodingType
+
+	// AddedInternalDatabaseVersion indicates that the InternalDatabaseVersion
+	// field has been set.
+	AddedInternalDatabaseVersion
 )
