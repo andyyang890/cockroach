@@ -330,6 +330,12 @@ var upgrades = []upgradebase.Upgrade{
 		upgrade.NoPrecondition,
 		grantExecuteToPublicOnAllFunctions,
 	),
+	upgrade.NewTenantUpgrade(
+		"add internal database version to system database descriptor",
+		toCV(clusterversion.V23_2_SystemDatabaseHasInternalVersion),
+		upgrade.NoPrecondition,
+		addInternalDatabaseVersionToSystemDatabaseDescriptor,
+	),
 }
 
 var (
