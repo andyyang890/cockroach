@@ -71,7 +71,7 @@ func stmtDiagForPlanGistMigration(
 			},
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, keys.StatementDiagnosticsRequestsTableID,
+		if err := migrateTable(ctx, cs, d.DB, op, keys.StatementDiagnosticsRequestsTableID,
 			systemschema.StatementDiagnosticsRequestsTable); err != nil {
 			return err
 		}

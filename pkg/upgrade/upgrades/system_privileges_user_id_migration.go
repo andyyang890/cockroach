@@ -63,7 +63,7 @@ func alterSystemPrivilegesAddUserIDColumn(
 			schemaExistsFn: hasIndex,
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, tableID, systemschema.SystemPrivilegeTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, tableID, systemschema.SystemPrivilegeTable); err != nil {
 			return err
 		}
 	}
@@ -127,7 +127,7 @@ func backfillSystemPrivilegesUserIDColumn(
 		query:          setUserIDColumnToNotNullSystemPrivilegesStmt,
 		schemaExistsFn: columnExistsAndIsNotNull,
 	}
-	if err := migrateTable(ctx, cs, d, op, tableID, systemschema.SystemPrivilegeTable); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, tableID, systemschema.SystemPrivilegeTable); err != nil {
 		return err
 	}
 

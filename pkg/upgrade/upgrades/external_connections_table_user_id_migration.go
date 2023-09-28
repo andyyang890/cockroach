@@ -51,7 +51,7 @@ func alterExternalConnectionsTableAddOwnerIDColumn(
 			schemaExistsFn: columnExists,
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, tableID, systemschema.SystemExternalConnectionsTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, tableID, systemschema.SystemExternalConnectionsTable); err != nil {
 			return err
 		}
 	}
@@ -110,7 +110,7 @@ func backfillExternalConnectionsTableOwnerIDColumn(
 		query:          setOwnerIDColumnToNotNullExternalConnectionsTableStmt,
 		schemaExistsFn: columnExistsAndIsNotNull,
 	}
-	if err := migrateTable(ctx, cs, d, op, tableID, systemschema.SystemExternalConnectionsTable); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, tableID, systemschema.SystemExternalConnectionsTable); err != nil {
 		return err
 	}
 

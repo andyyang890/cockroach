@@ -43,7 +43,7 @@ func alterSystemPrivilegesAddSecondaryIndex(
 	}
 
 	tableID := descpb.ID(tree.MustBeDOid(idRow[0]).Oid)
-	if err := migrateTable(ctx, cs, d, op, tableID, systemschema.SystemPrivilegeTable); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, tableID, systemschema.SystemPrivilegeTable); err != nil {
 		return err
 	}
 

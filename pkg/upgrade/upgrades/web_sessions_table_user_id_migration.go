@@ -37,7 +37,7 @@ func alterWebSessionsTableAddUserIDColumn(
 			schemaExistsFn: columnExists,
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, keys.WebSessionsTableID, systemschema.WebSessionsTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, keys.WebSessionsTableID, systemschema.WebSessionsTable); err != nil {
 			return err
 		}
 	}
@@ -102,7 +102,7 @@ func backfillWebSessionsTableUserIDColumn(
 		query:          setUserIDColumnToNotNullWebSessionsTableStmt,
 		schemaExistsFn: columnExistsAndIsNotNull,
 	}
-	if err := migrateTable(ctx, cs, d, op, keys.WebSessionsTableID, systemschema.WebSessionsTable); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, keys.WebSessionsTableID, systemschema.WebSessionsTable); err != nil {
 		return err
 	}
 

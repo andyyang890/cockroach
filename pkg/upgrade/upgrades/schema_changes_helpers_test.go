@@ -70,7 +70,7 @@ func MakeFakeMigrationForTestMigrationWithFailures() (
 			},
 		} {
 			expected := expectedTableDescriptor.Load().(catalog.TableDescriptor)
-			if err := migrateTable(ctx, cs, d, op, tableID, expected); err != nil {
+			if err := migrateTable(ctx, cs, d.DB, op, tableID, expected); err != nil {
 				return err
 			}
 		}
@@ -125,7 +125,7 @@ func MakeFakeMigrationForTestMigrationWithFailuresMultipleAltersOnSameColumn() (
 			},
 		} {
 			expected := expectedTableDescriptor.Load().(catalog.TableDescriptor)
-			if err := migrateTable(ctx, cs, d, op, tableID, expected); err != nil {
+			if err := migrateTable(ctx, cs, d.DB, op, tableID, expected); err != nil {
 				return err
 			}
 		}

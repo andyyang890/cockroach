@@ -51,7 +51,7 @@ func alterDatabaseRoleSettingsTableAddRoleIDColumn(
 			schemaExistsFn: hasIndex,
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, keys.DatabaseRoleSettingsTableID, systemschema.DatabaseRoleSettingsTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, keys.DatabaseRoleSettingsTableID, systemschema.DatabaseRoleSettingsTable); err != nil {
 			return err
 		}
 	}
@@ -104,7 +104,7 @@ func backfillDatabaseRoleSettingsTableRoleIDColumn(
 		query:          setRoleIDColumnToNotNullDatabaseRoleSettingsTableStmt,
 		schemaExistsFn: columnExistsAndIsNotNull,
 	}
-	if err := migrateTable(ctx, cs, d, op, keys.DatabaseRoleSettingsTableID, systemschema.DatabaseRoleSettingsTable); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, keys.DatabaseRoleSettingsTableID, systemschema.DatabaseRoleSettingsTable); err != nil {
 		return err
 	}
 

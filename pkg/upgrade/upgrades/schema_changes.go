@@ -22,7 +22,6 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
-	"github.com/cockroachdb/cockroach/pkg/upgrade"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/errors"
@@ -63,93 +62,95 @@ const waitForJobStatement = "SHOW JOBS WHEN COMPLETE VALUES ($1)"
 func migrateTable(
 	ctx context.Context,
 	_ clusterversion.ClusterVersion,
-	d upgrade.TenantDeps,
+	db descs.DB,
 	op operation,
 	storedTableID descpb.ID,
 	expectedTable catalog.TableDescriptor,
 ) error {
-	for {
-		// - Fetch the table, reading its descriptor from storage.
-		// - Check if any mutation jobs exist for the table. These mutations can
-		//   belong to a previous upgrade attempt that failed.
-		// - If any mutation job exists:
-		//   - Wait for the ongoing mutations to complete.
-		// 	 - Continue to the beginning of the loop to cater for the mutations
-		//	   that may have started while waiting for existing mutations to complete.
-		// - Check if the intended schema-changes already exist.
-		//   - If the changes already exist, skip the schema-change and return as
-		//     the changes are already done in a previous upgrade attempt.
-		//   - Otherwise, perform the schema-change and return.
+	return db.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
+		for {
+			// - Fetch the table, reading its descriptor from storage.
+			// - Check if any mutation jobs exist for the table. These mutations can
+			//   belong to a previous upgrade attempt that failed.
+			// - If any mutation job exists:
+			//   - Wait for the ongoing mutations to complete.
+			// 	 - Continue to the beginning of the loop to cater for the mutations
+			//	   that may have started while waiting for existing mutations to complete.
+			// - Check if the intended schema-changes already exist.
+			//   - If the changes already exist, skip the schema-change and return as
+			//     the changes are already done in a previous upgrade attempt.
+			//   - Otherwise, perform the schema-change and return.
 
-		log.Infof(ctx, "performing table migration operation %v", op.name)
+			log.Infof(ctx, "performing table migration operation %v", op.name)
 
-		// Retrieve the table.
-		storedTable, err := readTableDescriptor(ctx, d, storedTableID)
-		if err != nil {
-			return err
-		}
-
-		// Wait for any in-flight schema changes to complete.
-		// Check legacy schema changer jobs.
-		if mutations := storedTable.GetMutationJobs(); len(mutations) > 0 {
-			for _, mutation := range mutations {
-				log.Infof(ctx, "waiting for the mutation job %v to complete", mutation.JobID)
-				if _, err := d.InternalExecutor.Exec(ctx, "migration-mutations-wait",
-					nil, waitForJobStatement, mutation.JobID); err != nil {
-					return err
-				}
-			}
-			continue
-		}
-		// Check declarative schema changer jobs.
-		if state := storedTable.GetDeclarativeSchemaChangerState(); state != nil && state.JobID != catpb.InvalidJobID {
-			log.Infof(ctx, "waiting for the mutation job %v to complete", state.JobID)
-			if _, err := d.InternalExecutor.Exec(ctx, "migration-mutations-wait",
-				nil, waitForJobStatement, state.JobID); err != nil {
+			// Retrieve the table.
+			storedTable, err := readTableDescriptor(ctx, db, storedTableID)
+			if err != nil {
 				return err
 			}
-			continue
-		}
-		// Ignore the schema change if the table already has the required schema.
-		// Expect all or none.
-		var exists bool
-		for i, schemaName := range op.schemaList {
-			hasSchema, err := op.schemaExistsFn(storedTable, expectedTable, schemaName)
-			if err != nil {
-				return errors.Wrapf(err, "error while validating descriptors during"+
-					" operation %s", op.name)
+
+			// Wait for any in-flight schema changes to complete.
+			// Check legacy schema changer jobs.
+			if mutations := storedTable.GetMutationJobs(); len(mutations) > 0 {
+				for _, mutation := range mutations {
+					log.Infof(ctx, "waiting for the mutation job %v to complete", mutation.JobID)
+					if _, err := txn.Exec(ctx, "migration-mutations-wait",
+						txn.KV(), waitForJobStatement, mutation.JobID); err != nil {
+						return err
+					}
+				}
+				continue
 			}
-			if i > 0 && exists != hasSchema {
-				return errors.Errorf("error while validating descriptors. observed"+
-					" partial schema exists while performing %v", op.name)
+			// Check declarative schema changer jobs.
+			if state := storedTable.GetDeclarativeSchemaChangerState(); state != nil && state.JobID != catpb.InvalidJobID {
+				log.Infof(ctx, "waiting for the mutation job %v to complete", state.JobID)
+				if _, err := txn.Exec(ctx, "migration-mutations-wait",
+					txn.KV(), waitForJobStatement, state.JobID); err != nil {
+					return err
+				}
+				continue
 			}
-			exists = hasSchema
-		}
-		if exists {
-			log.Infof(ctx, "skipping %s operation as the schema change already exists.", op.name)
+			// Ignore the schema change if the table already has the required schema.
+			// Expect all or none.
+			var exists bool
+			for i, schemaName := range op.schemaList {
+				hasSchema, err := op.schemaExistsFn(storedTable, expectedTable, schemaName)
+				if err != nil {
+					return errors.Wrapf(err, "error while validating descriptors during"+
+						" operation %s", op.name)
+				}
+				if i > 0 && exists != hasSchema {
+					return errors.Errorf("error while validating descriptors. observed"+
+						" partial schema exists while performing %v", op.name)
+				}
+				exists = hasSchema
+			}
+			if exists {
+				log.Infof(ctx, "skipping %s operation as the schema change already exists.", op.name)
+				return nil
+			}
+
+			// Modify the table.
+			log.Infof(ctx, "performing operation: %s", op.name)
+			if _, err := txn.ExecEx(
+				ctx,
+				fmt.Sprintf("migration-alter-table-%d", storedTableID),
+				txn.KV(),
+				sessiondata.NodeUserSessionDataOverride,
+				op.query); err != nil {
+				return err
+			}
 			return nil
 		}
-
-		// Modify the table.
-		log.Infof(ctx, "performing operation: %s", op.name)
-		if _, err := d.InternalExecutor.ExecEx(
-			ctx,
-			fmt.Sprintf("migration-alter-table-%d", storedTableID),
-			nil, /* txn */
-			sessiondata.NodeUserSessionDataOverride,
-			op.query); err != nil {
-			return err
-		}
-		return nil
-	}
+	})
 }
 
 func readTableDescriptor(
-	ctx context.Context, d upgrade.TenantDeps, tableID descpb.ID,
+	ctx context.Context, db descs.DB, tableID descpb.ID,
 ) (catalog.TableDescriptor, error) {
 	var t catalog.TableDescriptor
 
-	if err := d.DB.DescsTxn(ctx, func(
+	if err := db.DescsTxn(ctx, func(
 		ctx context.Context, txn descs.Txn,
 	) (err error) {
 		t, err = txn.Descriptors().ByID(txn.KV()).WithoutNonPublic().Get().Table(ctx, tableID)

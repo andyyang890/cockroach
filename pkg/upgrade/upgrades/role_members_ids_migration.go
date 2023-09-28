@@ -67,7 +67,7 @@ func alterSystemRoleMembersAddIDColumns(
 			schemaExistsFn: hasIndex,
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, keys.RoleMembersTableID, systemschema.RoleMembersTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, keys.RoleMembersTableID, systemschema.RoleMembersTable); err != nil {
 			return err
 		}
 	}
@@ -126,7 +126,7 @@ func backfillSystemRoleMembersIDColumns(
 		query:          setIDColumnsToNotNullRoleMembersStmt,
 		schemaExistsFn: columnExistsAndIsNotNull,
 	}
-	if err := migrateTable(ctx, cs, d, op, keys.RoleMembersTableID, systemschema.RoleMembersTable); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, keys.RoleMembersTableID, systemschema.RoleMembersTable); err != nil {
 		return err
 	}
 

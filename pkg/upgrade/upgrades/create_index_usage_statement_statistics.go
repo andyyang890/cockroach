@@ -47,7 +47,7 @@ func createIndexOnIndexUsageOnSystemStatementStatistics(
 			schemaExistsFn: hasIndex,
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, keys.StatementStatisticsTableID, systemschema.StatementStatisticsTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, keys.StatementStatisticsTableID, systemschema.StatementStatisticsTable); err != nil {
 			return err
 		}
 	}

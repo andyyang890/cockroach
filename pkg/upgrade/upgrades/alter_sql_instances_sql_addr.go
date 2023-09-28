@@ -34,7 +34,7 @@ func alterSystemSQLInstancesAddSqlAddr(
 		query:          addSqlAddrCol,
 		schemaExistsFn: hasColumn,
 	}
-	if err := migrateTable(ctx, cs, d, op, keys.SQLInstancesTableID, systemschema.SQLInstancesTable()); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, keys.SQLInstancesTableID, systemschema.SQLInstancesTable()); err != nil {
 		return err
 	}
 	return nil

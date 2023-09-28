@@ -75,7 +75,7 @@ func alterSystemJobsAddJobType(
 	}
 
 	for _, op := range schemaChangeOps {
-		if err := migrateTable(ctx, cs, d, op, keys.JobsTableID, systemschema.JobsTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, keys.JobsTableID, systemschema.JobsTable); err != nil {
 			return err
 		}
 	}

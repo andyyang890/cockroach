@@ -35,7 +35,7 @@ func alterSystemTableStatisticsAddPartialPredicateAndID(
 		query:          addPartialStatisticsPredicateAndIDCol,
 		schemaExistsFn: hasColumn,
 	}
-	if err := migrateTable(ctx, cs, d, op, keys.TableStatisticsTableID, systemschema.TableStatisticsTable); err != nil {
+	if err := migrateTable(ctx, cs, d.DB, op, keys.TableStatisticsTableID, systemschema.TableStatisticsTable); err != nil {
 		return err
 	}
 	return nil

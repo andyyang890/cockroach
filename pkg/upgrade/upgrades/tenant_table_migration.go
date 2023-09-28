@@ -65,7 +65,7 @@ func extendTenantsTable(
 			schemaExistsFn: hasIndex,
 		},
 	} {
-		if err := migrateTable(ctx, cs, d, op, tenantsTableID, systemschema.TenantsTable); err != nil {
+		if err := migrateTable(ctx, cs, d.DB, op, tenantsTableID, systemschema.TenantsTable); err != nil {
 			return err
 		}
 	}
