@@ -21,6 +21,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descs"
+	"github.com/cockroachdb/cockroach/pkg/sql/sem/catconstants"
 	"github.com/cockroachdb/cockroach/pkg/sql/sessiondata"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
@@ -61,7 +62,7 @@ const waitForJobStatement = "SHOW JOBS WHEN COMPLETE VALUES ($1)"
 // an error if changes exist partially.
 func migrateTable(
 	ctx context.Context,
-	_ clusterversion.ClusterVersion,
+	cs clusterversion.ClusterVersion,
 	db descs.DB,
 	op operation,
 	storedTableID descpb.ID,
@@ -140,6 +141,18 @@ func migrateTable(
 				op.query); err != nil {
 				return err
 			}
+
+			// Update the system database internal version.
+			systemDBDesc, err := txn.Descriptors().MutableByName(txn.KV()).Database(ctx, catconstants.SystemDatabaseName)
+			if err != nil {
+				return err
+			}
+			systemDBDesc.InternalDatabaseVersion = &cs.Version
+			err = txn.Descriptors().WriteDesc(ctx, false /* kvTrace */, systemDBDesc, txn.KV())
+			if err != nil {
+				return err
+			}
+
 			return nil
 		}
 	})
