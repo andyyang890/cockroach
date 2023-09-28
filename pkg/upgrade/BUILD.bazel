@@ -3,6 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "upgrade",
     srcs = [
+        "db.go",
         "doc.go",
         "helpers.go",
         "system_upgrade.go",
@@ -24,6 +25,7 @@ go_library(
         "//pkg/sql/catalog/lease",
         "//pkg/sql/catalog/resolver",
         "//pkg/sql/isql",
+        "//pkg/sql/sem/catconstants",
         "//pkg/sql/sessiondata",
         "//pkg/sql/sqlstats",
         "//pkg/upgrade/upgradebase",

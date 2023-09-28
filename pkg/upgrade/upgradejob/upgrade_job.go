@@ -89,7 +89,7 @@ func (r resumer) Resume(ctx context.Context, execCtxI interface{}) error {
 		tenantDeps := upgrade.TenantDeps{
 			Codec:            execCtx.ExecCfg().Codec,
 			Settings:         execCtx.ExecCfg().Settings,
-			DB:               execCtx.ExecCfg().InternalDB,
+			DB:               upgrade.MakeDB(execCtx.ExecCfg().InternalDB),
 			KVDB:             execCtx.ExecCfg().DB,
 			LeaseManager:     execCtx.ExecCfg().LeaseManager,
 			InternalExecutor: ex,

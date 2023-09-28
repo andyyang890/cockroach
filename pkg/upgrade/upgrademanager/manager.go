@@ -695,7 +695,7 @@ func (m *Manager) runMigration(
 			// upgrades" that run under this testing knob.
 			if err := upg.Run(ctx, mig.Version(), upgrade.TenantDeps{
 				KVDB:             m.deps.DB.KV(),
-				DB:               m.deps.DB,
+				DB:               upgrade.MakeDB(m.deps.DB),
 				Codec:            m.codec,
 				Settings:         m.settings,
 				LeaseManager:     m.lm,
@@ -883,7 +883,7 @@ func (m *Manager) checkPreconditions(ctx context.Context, versions []roachpb.Ver
 			continue
 		}
 		if err := tm.Precondition(ctx, clusterversion.ClusterVersion{Version: v}, upgrade.TenantDeps{
-			DB:               m.deps.DB,
+			DB:               upgrade.MakeDB(m.deps.DB),
 			Codec:            m.codec,
 			Settings:         m.settings,
 			LeaseManager:     m.lm,

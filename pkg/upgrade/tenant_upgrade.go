@@ -35,7 +35,7 @@ type TenantDeps struct {
 	KVDB         *kv.DB
 	Codec        keys.SQLCodec
 	Settings     *cluster.Settings
-	DB           descs.DB
+	DB           DB
 	LeaseManager *lease.Manager
 	JobRegistry  *jobs.Registry
 	SessionData  *sessiondata.SessionData

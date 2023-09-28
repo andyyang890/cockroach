@@ -131,7 +131,7 @@ func countRowsWithKv(
 func makeDeps(s serverutils.TestServerInterface) upgrade.TenantDeps {
 	execCfg := s.ExecutorConfig().(sql.ExecutorConfig)
 	return upgrade.TenantDeps{
-		DB:           execCfg.InternalDB,
+		DB:           upgrade.MakeDB(execCfg.InternalDB),
 		KVDB:         s.DB(),
 		Codec:        s.Codec(),
 		LeaseManager: s.LeaseManager().(*lease.Manager),
