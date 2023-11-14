@@ -133,3 +133,13 @@ statement ok
 REVOKE CHANGEFEED ON t FROM testuser
 
 subtest end
+
+subtest regression_114058
+
+statement ok
+CREATE TABLE empty ();
+
+statement ok
+CREATE CHANGEFEED INTO 'null://sink' AS SELECT * FROM empty;
+
+subtest end

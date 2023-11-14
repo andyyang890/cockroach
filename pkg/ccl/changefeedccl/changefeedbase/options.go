@@ -696,8 +696,7 @@ func (s StatementOptions) GetInitialScanType() (InitialScanType, error) {
 	}
 
 	if initialScanSet {
-		const opt = OptInitialScan
-		v, err := s.getEnumValue(opt)
+		v, err := s.getEnumValue(OptInitialScan)
 		if err != nil {
 			return InitialScan, err
 		}

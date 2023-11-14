@@ -162,6 +162,12 @@ func changefeedPlanHook(
 		if err != nil {
 			return nil, nil, nil, false, changefeedbase.MarkTaggedError(err, changefeedbase.UserInput)
 		}
+		if sinkURI == "" {
+			return nil, nil, nil, false, changefeedbase.MarkTaggedError(
+				errors.New("expected non-empty sink location"),
+				changefeedbase.UserInput,
+			)
+		}
 		header = withSinkHeader
 	}
 
@@ -174,23 +180,19 @@ func changefeedPlanHook(
 
 	// rowFn impements sql.PlanHookRowFn
 	rowFn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
-		ctx, span := tracing.ChildSpan(ctx, stmt.StatementTag())
+		ctx, span := tracing.ChildSpan(ctx, changefeedStmt.StatementTag())
 		defer span.Finish()
 		opts := changefeedbase.MakeStatementOptions(rawOpts)
 		st, err := opts.GetInitialScanType()
 		if err != nil {
 			return err
 		}
-		if err := validateSettings(ctx, st != changefeedbase.OnlyInitialScan, p.ExecCfg()); err != nil {
+		needsRangeFeed := st != changefeedbase.OnlyInitialScan
+		if err := validateSettings(ctx, needsRangeFeed, p.ExecCfg()); err != nil {
 			return err
 		}
 
-		if !unspecifiedSink && sinkURI == `` {
-			// Error if someone specifies an INTO with the empty string. We've
-			// already sent the wrong result column headers.
-			return errors.New(`omit the SINK clause for inline results`)
-		}
-
+		// TODO(yang): Look at this.
 		jr, err := createChangefeedJobRecord(
 			ctx,
 			p,
@@ -204,6 +206,7 @@ func changefeedPlanHook(
 			return changefeedbase.MarkTaggedError(err, changefeedbase.UserInput)
 		}
 
+		// TODO(yang): Continue from here.
 		details := jr.Details.(jobspb.ChangefeedDetails)
 		progress := jobspb.Progress{
 			Progress: &jobspb.Progress_HighWater{},
@@ -382,8 +385,6 @@ func createChangefeedJobRecord(
 	jobID jobspb.JobID,
 	telemetryPath string,
 ) (*jobs.Record, error) {
-	unspecifiedSink := changefeedStmt.SinkURI == nil
-
 	for _, warning := range opts.DeprecationWarnings() {
 		p.BufferClientNotice(ctx, pgnotice.Newf("%s", warning))
 	}
@@ -393,6 +394,7 @@ func createChangefeedJobRecord(
 		return nil, err
 	}
 
+	// TODO(yang): Got here.
 	statementTime := hlc.Timestamp{
 		WallTime: p.ExtendedEvalContext().GetStmtTimestamp().UnixNano(),
 	}
@@ -433,7 +435,6 @@ func createChangefeedJobRecord(
 	}
 
 	endTime := hlc.Timestamp{}
-
 	if opts.HasEndTime() {
 		asOfClause := tree.AsOfClause{Expr: tree.NewStrVal(opts.GetEndTime())}
 		asOf, err := asof.Eval(ctx, asOfClause, p.SemaCtx(), &p.ExtendedEvalContext().Context)
@@ -468,10 +469,10 @@ func createChangefeedJobRecord(
 
 	targets, tables, err := getTargetsAndTables(ctx, p, targetDescs, changefeedStmt.Targets,
 		changefeedStmt.originalSpecs, opts.ShouldUseFullStatementTimeName(), sinkURI)
-
 	if err != nil {
 		return nil, err
 	}
+
 	tolerances := opts.GetCanHandle()
 	sd := p.SessionData().Clone()
 	// Add non-local session data state (localization, etc).
@@ -511,6 +512,7 @@ func createChangefeedJobRecord(
 		}
 	}
 
+	// TODO(yang): Continue from here.
 	if changefeedStmt.Select != nil {
 		// Serialize changefeed expression.
 		normalized, withDiff, err := validateAndNormalizeChangefeedExpression(
@@ -596,7 +598,7 @@ func createChangefeedJobRecord(
 		return nil, err
 	}
 
-	if !unspecifiedSink && p.ExecCfg().ExternalIODirConfig.DisableOutbound {
+	if sinkURI != "" && p.ExecCfg().ExternalIODirConfig.DisableOutbound {
 		return nil, errors.Errorf("Outbound IO is disabled by configuration, cannot create changefeed into %s", parsedSink.Scheme)
 	}
 
