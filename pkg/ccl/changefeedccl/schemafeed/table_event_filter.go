@@ -36,8 +36,6 @@ const (
 	numEventTypes int = iota
 )
 
-type tableEventTypeSet uint64
-
 var (
 	defaultTableEventFilter = tableEventFilter{
 		tableEventDropColumn:                  false,
@@ -64,6 +62,8 @@ var (
 		changefeedbase.OptSchemaChangeEventClassColumnChange: columnChangeTableEventFilter,
 	}
 )
+
+type tableEventTypeSet uint64
 
 // Contains returns true if the receiver includes the given event
 // types.
@@ -120,8 +120,9 @@ func classifyTableEvent(e TableEvent) tableEventTypeSet {
 	return et
 }
 
-// typeFilters indicates whether a table event of a given type should be
+// tableEventFilter indicates whether a table event of a given type should be
 // permitted by the filter.
+// Note: true means filter, false means do not filter.
 type tableEventFilter map[tableEventType]bool
 
 func (filter tableEventFilter) shouldFilter(
@@ -143,19 +144,19 @@ func (filter tableEventFilter) shouldFilter(
 	}
 
 	shouldFilter := true
-	for filterEvent, filterPolicy := range filter {
-		if et.Contains(filterEvent) && !filterPolicy {
+	for eventType, shouldFilterEventType := range filter {
+		if et.Contains(eventType) && !shouldFilterEventType {
 			// Apply changefeed target-specific filters.
 			// In some cases, a drop column event should be filtered out.
 			// For example, we may be dropping a column which is not
 			// monitored by the changefeed.
-			if filterEvent == tableEventDropColumn {
+			if eventType == tableEventDropColumn {
 				sf, err := shouldFilterDropColumnEvent(e, targets)
 				if err != nil {
 					return false, err
 				}
 				shouldFilter = sf && shouldFilter
-			} else if filterEvent == tableEventAddColumnNoBackfill || filterEvent == tableEventAddColumnWithBackfill {
+			} else if eventType == tableEventAddColumnNoBackfill || eventType == tableEventAddColumnWithBackfill {
 				sf, err := shouldFilterAddColumnEvent(e, targets)
 				if err != nil {
 					return false, err
@@ -165,7 +166,7 @@ func (filter tableEventFilter) shouldFilter(
 				shouldFilter = false
 			}
 		}
-		et = et.Clear(filterEvent)
+		et = et.Clear(eventType)
 	}
 	if et > 0 {
 		return false, errors.AssertionFailedf("policy does not specify how to handle event (unhandled event types: %v)", et)
