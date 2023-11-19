@@ -395,9 +395,6 @@ func (tf *schemaFeed) peekOrPop(
 	i := sort.Search(len(tf.mu.events), func(i int) bool {
 		return !tf.mu.events[i].Timestamp().LessEq(atOrBefore)
 	})
-	if i == -1 {
-		i = 0
-	}
 	events = tf.mu.events[:i]
 	if pop {
 		tf.mu.events = tf.mu.events[i:]
