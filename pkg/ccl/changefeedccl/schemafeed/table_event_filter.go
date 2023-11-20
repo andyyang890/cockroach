@@ -143,6 +143,7 @@ func (filter tableEventFilter) shouldFilter(
 		return shouldFilter, nil
 	}
 
+	// Why is the default filtering out?????
 	shouldFilter := true
 	for eventType, shouldFilterEventType := range filter {
 		if et.Contains(eventType) && !shouldFilterEventType {
