@@ -111,6 +111,7 @@ func New(
 // timestamp such that every version of a TableDescriptor has met a provided
 // invariant (via `validateFn`). An error timestamp is also kept, which is the
 // lowest timestamp where at least one table doesn't meet the invariant.
+// TODO(yang): What is validateFn?
 type schemaFeed struct {
 	filter     tableEventFilter
 	db         descs.DB
@@ -131,10 +132,12 @@ type schemaFeed struct {
 		// started is used to prevent running a schema feed more than once.
 		started bool
 
-		// the highest known valid timestamp
+		// highWater is the highest known valid timestamp
 		highWater hlc.Timestamp
 
-		// the lowest known invalid timestamp
+		// errTS is the lowest known invalid timestamp
+		// Invariant: errTS >= highWater
+		// TODO(yang): Create a setter for setting both errTS and err
 		errTS hlc.Timestamp
 
 		// the error associated with errTS
@@ -231,6 +234,7 @@ type tableHistoryWaiter struct {
 	errCh chan error
 }
 
+// TODO(yang): Change all the receiver variables to be sf.
 func (tf *schemaFeed) pollingPaused() bool {
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
@@ -304,6 +308,7 @@ func (tf *schemaFeed) primeInitialTableDescs(ctx context.Context) error {
 		return err
 	}
 
+	// TODO(yang): This code is unnecessary because it's already done in ingestDescriptors.
 	func() {
 		tf.mu.Lock()
 		defer tf.mu.Unlock()
@@ -381,8 +386,10 @@ func (tf *schemaFeed) Pop(
 func (tf *schemaFeed) peekOrPop(
 	ctx context.Context, atOrBefore hlc.Timestamp, pop bool,
 ) (events []TableEvent, err error) {
+	// TODO(yang): This code is strange, why not return a bool parameter?
 	// Routinely check to pause or resume polling. If it decides to pause polling,
 	// then `atOrBefore` will be updated to one that requires no waiting.
+	// TODO(yang): Read this.
 	atOrBefore, err = tf.pauseOrResumePolling(ctx, atOrBefore)
 	if err != nil {
 		return nil, err
@@ -426,6 +433,8 @@ func (tf *schemaFeed) peekOrPop(
 //	for SQL activities at timestamp `ts`. This version is either the "canonical"
 //	version of `t` at `ts`, or its predecessor version.
 //
+// TODO(yang): What does "if both `ld1` and `ld2` are of the same version" in the sentence
+// below mean?
 // Now, if both `ld1` and `ld2` are of the same version and are both "schema_locked",
 // then it's safe to report "there's no table events in (tf.highWater, atOrBefore]",
 // because
@@ -440,9 +449,12 @@ func (tf *schemaFeed) peekOrPop(
 //     from `tf.highWater` to `atOrBefore`.
 //   - ld1 predecessor, ld2 canonical: impossible (how can it be that `t` is
 //     unlocked at tf.highWater but locked at atOrBefore with the same version?).
+//
+// TODO(yang): How do you know if you got the canonical or predecessor version?
 func (tf *schemaFeed) pauseOrResumePolling(
 	ctx context.Context, atOrBefore hlc.Timestamp,
 ) (hlc.Timestamp, error) {
+	// TODO(yang): Understand this closure.
 	// areAllLeasedTablesSchemaLockedAt returns true if all leased tables are
 	// schema locked at timestamp `ts`.
 	// It also updates input `versions` to record those table versions at `ts`.
@@ -478,6 +490,11 @@ func (tf *schemaFeed) pauseOrResumePolling(
 		return atOrBefore, nil
 	}
 
+	// TODO(yang): How is this safe? Wouldn't we want to clear the maps between calls?
+	// Is there an implicit assumption that the number of targets won't change?
+	// Feels unsafe where in a newer version a table could be deleted but it'll be
+	// present in the old one or vice versa.
+	// Seems like by reusing the maps we could have false negatives.
 	if tf.mu.allTableVersions1 == nil {
 		tf.mu.allTableVersions1 = make(map[descpb.ID]descpb.DescriptorVersion)
 		tf.mu.allTableVersions2 = make(map[descpb.ID]descpb.DescriptorVersion)
@@ -491,6 +508,7 @@ func (tf *schemaFeed) pauseOrResumePolling(
 	if ok, err := areAllLeasedTablesSchemaLockedAt(atOrBefore, tf.mu.allTableVersions2); err != nil || !ok {
 		return atOrBefore, err
 	}
+	// TODO(yang): This check seems like it's only necessary because we aren't reusing maps.
 	if len(tf.mu.allTableVersions1) != len(tf.mu.allTableVersions2) {
 		return atOrBefore, nil
 	}
@@ -500,6 +518,7 @@ func (tf *schemaFeed) pauseOrResumePolling(
 		}
 	}
 	tf.mu.pollingPaused = true
+	// TODO(yang): Should we update the highwater to atOrBefore?
 	return tf.mu.highWater, nil
 }
 
@@ -511,6 +530,7 @@ func (tf *schemaFeed) highWater() hlc.Timestamp {
 	return highWater
 }
 
+// TODO(yang): Correct this comment.
 // waitForTS blocks until the given timestamp is less than or equal to the
 // high-water or error timestamp. In the latter case, the error is returned.
 //
@@ -577,7 +597,8 @@ func descLess(a, b catalog.Descriptor) bool {
 // required that the descriptors represent a transactional kv read between the
 // two given timestamps.
 //
-// validateFn is exposed for testing, in production it is tf.validateDescriptor.
+// TODO(yang): This is a misnomer because not only does it validate it also ingests.
+// validateFn is exposed for testing, in production it is validateDescriptor.
 func (tf *schemaFeed) ingestDescriptors(
 	ctx context.Context,
 	startTS, endTS hlc.Timestamp,
@@ -787,6 +808,8 @@ func sendExportRequestWithPriorityOverride(
 
 // fetchDescriptorVersions makes a KV API call to fetch all watched descriptors
 // versions with mvcc timestamp in (startTS, endTS].
+// TODO(yang): Figure out why we use KV API instead of descs.Txn and then document
+// it in this comment. Presumably, it is much more performant somehow.
 func (tf *schemaFeed) fetchDescriptorVersions(
 	ctx context.Context, startTS, endTS hlc.Timestamp,
 ) ([]catalog.Descriptor, error) {
