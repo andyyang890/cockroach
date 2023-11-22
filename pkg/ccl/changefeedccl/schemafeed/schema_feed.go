@@ -123,7 +123,7 @@ type schemaFeed struct {
 	// TODO(ajwerner): Should this live underneath the FilterFunc?
 	// Should there be another function to decide whether to update the
 	// lease manager?
-	leaseMgr *lease.Manager
+	leaseMgr leaseAcquirer
 
 	mu struct {
 		syncutil.Mutex
@@ -817,6 +817,7 @@ func (tf *schemaFeed) fetchDescriptorVersions(
 	if log.ExpensiveLogEnabled(ctx, 2) {
 		log.Infof(ctx, `fetching table descs (%s,%s]`, startTS, endTS)
 	}
+	// TODO(yang): Does this codec _need_ to come from the leaseMgr?
 	codec := tf.leaseMgr.Codec()
 	start := timeutil.Now()
 	span := roachpb.Span{Key: codec.TablePrefix(keys.DescriptorTableID)}

@@ -5,6 +5,7 @@ go_library(
     name = "schemafeed",
     srcs = [
         "gen-tableEventType-stringer",  # keep
+        "lease_acquirer.go",
         "metrics.go",
         "schema_feed.go",
         "table_event_filter.go",
@@ -46,6 +47,7 @@ go_test(
     size = "medium",
     srcs = [
         "helpers_test.go",
+        "lease_acquirer_test.go",
         "main_test.go",
         "schema_feed_test.go",
         "table_event_filter_datadriven_test.go",
@@ -70,6 +72,7 @@ go_test(
         "//pkg/sql",
         "//pkg/sql/catalog",
         "//pkg/sql/catalog/descpb",
+        "//pkg/sql/catalog/lease",
         "//pkg/sql/catalog/tabledesc",
         "//pkg/testutils",
         "//pkg/testutils/datapathutils",

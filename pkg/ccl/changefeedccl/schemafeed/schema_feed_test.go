@@ -342,3 +342,33 @@ func TestSchemaFeedHandlesCascadeDatabaseDrop(t *testing.T) {
 // TODO(yang): Write a test where the lease manager returns a error (e.g. GC TTL).
 
 // TODO(yang): Write a test with various combinations of locking and unlocking.
+
+func TestPauseOrResumePolling(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	tableID1, tableName1 := descpb.ID(105), changefeedbase.StatementTimeName("t1")
+	tableID2, tableName2 := descpb.ID(106), changefeedbase.StatementTimeName("t2")
+
+	targets := changefeedbase.Targets{}
+	targets.Add(changefeedbase.Target{
+		Type:              jobspb.ChangefeedTargetSpecification_PRIMARY_FAMILY_ONLY,
+		TableID:           tableID1,
+		FamilyName:        "primary",
+		StatementTimeName: tableName1,
+	})
+	targets.Add(changefeedbase.Target{
+		Type:              jobspb.ChangefeedTargetSpecification_PRIMARY_FAMILY_ONLY,
+		TableID:           tableID2,
+		FamilyName:        "primary",
+		StatementTimeName: tableName2,
+	})
+
+	sf := schemaFeed{
+		targets:  targets,
+		leaseMgr: nil,
+	}
+
+	require.False(t, sf.pollingPaused())
+
+}
