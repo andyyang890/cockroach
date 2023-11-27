@@ -38,6 +38,7 @@ import (
 
 func TestTableHistoryIngestionTracking(t *testing.T) {
 	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
 
 	ctx := context.Background()
 	ts := func(wt int64) hlc.Timestamp { return hlc.Timestamp{WallTime: wt} }
@@ -174,7 +175,7 @@ func TestTableHistoryIngestionTracking(t *testing.T) {
 	// returns the 9 error now, it returned the ts 10 error above)
 	require.EqualError(t, m.waitForTS(ctx, ts(9)), `descriptor: oh no!`)
 
-	// something earlier than ts 10 can still be okay
+	// something earlier than ts 9 can still be okay
 	require.NoError(t, m.ingestDescriptors(ctx, ts(7), ts(8), nil, validateFn))
 	require.Equal(t, ts(8), m.highWater())
 	require.NoError(t, <-errCh8)
