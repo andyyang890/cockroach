@@ -342,3 +342,17 @@ func TestSchemaFeedHandlesCascadeDatabaseDrop(t *testing.T) {
 // TODO(yang): Write a test where the lease manager returns a error (e.g. GC TTL).
 
 // TODO(yang): Write a test with various combinations of locking and unlocking.
+
+func TestPauseOrResumePolling(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	srv, db, _ := serverutils.StartServer(t, base.TestServerArgs{})
+	defer srv.Stopper().Stop(ctx)
+	s := srv.ApplicationLayer()
+	sqlServer := s.SQLServer().(*sql.Server)
+
+	sqlDB := sqlutils.MakeSQLRunner(db)
+
+}
