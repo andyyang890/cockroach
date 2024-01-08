@@ -476,6 +476,24 @@ func (cmvt *cdcMixedVersionTester) distributionStrategySupported(
 	return h.ClusterVersionAtLeast(r, v232CV)
 }
 
+func (cmvt *cdcMixedVersionTester) ttlChangefeedReplicationSupported(
+	r *rand.Rand, h *mixedversion.Helper,
+) (bool, option.NodeListOption, error) {
+	// The TTL changefeed replication setting was added in 23.2.
+	ok, err := h.ClusterVersionAtLeast(r, v232CV)
+	if err != nil {
+		return false, nil, err
+	}
+	if ok {
+		return true, h.Context.CockroachNodes, nil
+	}
+	if (h.Context.ToVersion.Major() > 23 || (h.Context.ToVersion.Major() == 23 && h.Context.ToVersion.Minor() >= 2)) &&
+		h.Context.MixedBinary() {
+		return true, h.Context.NodesInNextVersion(), nil
+	}
+	return false, nil, nil
+}
+
 func runCDCMixedVersions(ctx context.Context, t test.Test, c cluster.Cluster) {
 	tester := newCDCMixedVersionTester(ctx, t, c)
 
@@ -525,6 +543,20 @@ func runCDCMixedVersions(ctx context.Context, t test.Test, c cluster.Cluster) {
 		return nil
 	}
 
+	// TTL changefeed filtering available in 23.2.
+	setTTLChangefeedReplicationDisabled := func(ctx context.Context, l *logger.Logger, r *rand.Rand, h *mixedversion.Helper) error {
+		supported, gatewayNodes, err := tester.ttlChangefeedReplicationSupported(r, h)
+		if err != nil {
+			return err
+		}
+		if supported {
+			coin := r.Int()%2 == 0
+			l.PrintfCtx(ctx, "Setting sql.ttl.changefeed_replication.disabled=%t", coin)
+			return h.ExecWithGateway(r, gatewayNodes, "SET CLUSTER SETTING sql.ttl.changefeed_replication.disabled=$1", coin)
+		}
+		return nil
+	}
+
 	// Register hooks.
 	mvt.OnStartup("start changefeed", tester.createChangeFeed)
 	mvt.OnStartup("create validator", tester.setupValidator)
@@ -541,9 +573,11 @@ func runCDCMixedVersions(ctx context.Context, t test.Test, c cluster.Cluster) {
 	// Enable/disable mux rangefeed related settings in mixed version.
 	mvt.InMixedVersion("use mux", setMuxRangeFeedEnabled)
 	mvt.InMixedVersion("use scheduler", setRangeFeedSchedulerEnabled)
+	mvt.InMixedVersion("disable ttl replication", setTTLChangefeedReplicationDisabled)
 
 	mvt.AfterUpgradeFinalized("use mux", setMuxRangeFeedEnabled)
 	mvt.AfterUpgradeFinalized("use scheduler", setRangeFeedSchedulerEnabled)
+	mvt.AfterUpgradeFinalized("disable ttl replication", setTTLChangefeedReplicationDisabled)
 	mvt.AfterUpgradeFinalized("wait and validate", tester.waitAndValidate)
 	mvt.Run()
 }
