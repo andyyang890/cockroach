@@ -406,7 +406,8 @@ func (cmvt *cdcMixedVersionTester) runWorkloadCmd(r *rand.Rand) *roachtestutil.C
 		Flag("max-rate", 2).
 		Flag("seed", r.Int63()).
 		Arg("{pgurl%s}", cmvt.crdbNodes).
-		Option("tolerate-errors")
+		Option("tolerate-errors").
+		Flag("c", "disable_changefeed_replication=true")
 }
 
 // initWorkload synchronously initializes the workload.
