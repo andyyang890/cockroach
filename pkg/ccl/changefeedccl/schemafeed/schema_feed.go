@@ -620,6 +620,7 @@ func (tf *schemaFeed) ingestDescriptors(
 	validateFn func(ctx context.Context, earliestTsBeingIngested hlc.Timestamp, desc catalog.Descriptor) error,
 ) error {
 	sort.Slice(descs, func(i, j int) bool { return descLess(descs[i], descs[j]) })
+	// TODO(yang): This whole validateErr logic isn't great.
 	var validateErr error
 	for _, desc := range descs {
 		if err := validateFn(ctx, startTS, desc); validateErr == nil {
@@ -627,6 +628,64 @@ func (tf *schemaFeed) ingestDescriptors(
 		}
 	}
 	return tf.adjustTimestamps(startTS, endTS, validateErr)
+}
+
+func (tf *schemaFeed) ingestDescriptor(ctx context.Context, desc catalog.Descriptor) error {
+	t, ok := desc.(catalog.TableDescriptor)
+	if !ok {
+		return nil
+	}
+	if lastVersion, ok := tf.mu.previousTableVersion[desc.GetID()]; ok {
+		// NB: Writes can occur to a table
+		if desc.GetModificationTime().LessEq(lastVersion.GetModificationTime()) {
+			return nil
+		}
+
+		// To avoid race conditions with the lease manager, at this point we force
+		// the manager to acquire the freshest descriptor of this table from the
+		// store. In normal operation, the lease manager returns the newest
+		// descriptor it knows about for the timestamp, assuming it's still
+		// allowed; without this explicit load, the lease manager might therefore
+		// return the previous version of the table, which is still technically
+		// allowed by the schema change system.
+		if err := tf.leaseMgr.AcquireFreshestFromStore(ctx, desc.GetID()); err != nil {
+			return err
+		}
+
+		// Purge the old version of the table from the type mapping.
+		tf.mu.typeDeps.purgeTable(lastVersion)
+
+		e := TableEvent{
+			Before: lastVersion,
+			After:  desc,
+		}
+		shouldFilter, err := tf.filter.shouldFilter(ctx, e, tf.targets)
+		log.VEventf(ctx, 1, "validate shouldFilter %v %v", formatEvent(e), shouldFilter)
+		if err != nil {
+			return changefeedbase.WithTerminalError(err)
+		}
+		if !shouldFilter {
+			// Only sort the tail of the events from earliestTsBeingIngested.
+			// The head could already have been handed out and sorting is not
+			// stable.
+			idxToSort := sort.Search(len(tf.mu.events), func(i int) bool {
+				return !tf.mu.events[i].After.GetModificationTime().Less(earliestTsBeingIngested)
+			})
+			tf.mu.events = append(tf.mu.events, e)
+			toSort := tf.mu.events[idxToSort:]
+			sort.Slice(toSort, func(i, j int) bool {
+				return descLess(toSort[i].After, toSort[j].After)
+			})
+		}
+	}
+	// Add the types used by the table into the dependency tracker.
+	tf.mu.typeDeps.ingestTable(desc)
+	tf.mu.previousTableVersion[desc.GetID()] = desc
+	return nil
+}
+
+func (tf *schemaFeed) makeTableEvent(desc catalog.TableDescriptor) {
+
 }
 
 // adjustTimestamps adjusts the high-water or error timestamp appropriately.
@@ -707,52 +766,6 @@ func (tf *schemaFeed) validateDescriptor(
 			return err
 		}
 		log.VEventf(ctx, 1, "validate %v", formatDesc(desc))
-		if lastVersion, ok := tf.mu.previousTableVersion[desc.GetID()]; ok {
-			// NB: Writes can occur to a table
-			if desc.GetModificationTime().LessEq(lastVersion.GetModificationTime()) {
-				return nil
-			}
-
-			// To avoid race conditions with the lease manager, at this point we force
-			// the manager to acquire the freshest descriptor of this table from the
-			// store. In normal operation, the lease manager returns the newest
-			// descriptor it knows about for the timestamp, assuming it's still
-			// allowed; without this explicit load, the lease manager might therefore
-			// return the previous version of the table, which is still technically
-			// allowed by the schema change system.
-			if err := tf.leaseMgr.AcquireFreshestFromStore(ctx, desc.GetID()); err != nil {
-				return err
-			}
-
-			// Purge the old version of the table from the type mapping.
-			tf.mu.typeDeps.purgeTable(lastVersion)
-
-			e := TableEvent{
-				Before: lastVersion,
-				After:  desc,
-			}
-			shouldFilter, err := tf.filter.shouldFilter(ctx, e, tf.targets)
-			log.VEventf(ctx, 1, "validate shouldFilter %v %v", formatEvent(e), shouldFilter)
-			if err != nil {
-				return changefeedbase.WithTerminalError(err)
-			}
-			if !shouldFilter {
-				// Only sort the tail of the events from earliestTsBeingIngested.
-				// The head could already have been handed out and sorting is not
-				// stable.
-				idxToSort := sort.Search(len(tf.mu.events), func(i int) bool {
-					return !tf.mu.events[i].After.GetModificationTime().Less(earliestTsBeingIngested)
-				})
-				tf.mu.events = append(tf.mu.events, e)
-				toSort := tf.mu.events[idxToSort:]
-				sort.Slice(toSort, func(i, j int) bool {
-					return descLess(toSort[i].After, toSort[j].After)
-				})
-			}
-		}
-		// Add the types used by the table into the dependency tracker.
-		tf.mu.typeDeps.ingestTable(desc)
-		tf.mu.previousTableVersion[desc.GetID()] = desc
 		return nil
 	default:
 		return errors.AssertionFailedf("unexpected descriptor type %T", desc)
