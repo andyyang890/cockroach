@@ -19,5 +19,5 @@ func TestSortedTableEvents(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
-	s := sortedTableEvents{}
+	_ = sortedTableEvents{}
 }

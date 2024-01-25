@@ -145,6 +145,8 @@ type schemaFeed struct {
 		// are at or below highWater.
 		events []TableEvent
 
+		events2 sortedTableEvents
+
 		// previousTableVersion is a map from tableID to the most recent version
 		// of the table descriptor seen by the poller. This is needed to determine
 		// when a backfilling mutation has successfully completed - this can only
@@ -380,16 +382,13 @@ func (tf *schemaFeed) peekOrPop(
 	if err = tf.waitForTS(ctx, atOrBefore); err != nil {
 		return nil, err
 	}
+	// TODO(yang): This access of events could benefit from a separate lock.
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
-	i := sort.Search(len(tf.mu.events), func(i int) bool {
-		return !tf.mu.events[i].Timestamp().LessEq(atOrBefore)
-	})
-	events = tf.mu.events[:i]
 	if pop {
-		tf.mu.events = tf.mu.events[i:]
+		return tf.mu.events2.Pop(atOrBefore), nil
 	}
-	return events, nil
+	return tf.mu.events2.Peek(atOrBefore), nil
 }
 
 // pauseOrResumePolling pauses or resumes the periodic table history scan
@@ -682,6 +681,7 @@ func formatEvent(e TableEvent) string {
 	return fmt.Sprintf("%v->%v", formatDesc(e.Before), formatDesc(e.After))
 }
 
+// TODO(yang): Make this return a table event or make another function that generates a table event.
 func (tf *schemaFeed) validateDescriptor(
 	ctx context.Context, earliestTsBeingIngested hlc.Timestamp, desc catalog.Descriptor,
 ) error {
