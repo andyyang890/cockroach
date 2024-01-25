@@ -7,6 +7,7 @@ go_library(
         "gen-tableEventType-stringer",  # keep
         "metrics.go",
         "schema_feed.go",
+        "table_event.go",
         "table_event_filter.go",
     ],
     importpath = "github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/schemafeed",
@@ -37,6 +38,7 @@ go_library(
         "//pkg/util/syncutil",
         "//pkg/util/timeutil",
         "@com_github_cockroachdb_errors//:errors",
+        "@org_golang_x_exp//slices",
     ],
 )
 
@@ -49,6 +51,7 @@ go_test(
         "schema_feed_test.go",
         "table_event_filter_datadriven_test.go",
         "table_event_filter_test.go",
+        "table_event_test.go",
     ],
     data = glob(["testdata/**"]),
     embed = [":schemafeed"],

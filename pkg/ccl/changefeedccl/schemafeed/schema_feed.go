@@ -45,16 +45,6 @@ import (
 // too hard. Each registered queue would have a start time. You'd scan from the
 // earliest and just ingest the relevant descriptors.
 
-// TableEvent represents a change to a table descriptor.
-type TableEvent struct {
-	Before, After catalog.TableDescriptor
-}
-
-// Timestamp refers to the ModificationTime of the After table descriptor.
-func (e TableEvent) Timestamp() hlc.Timestamp {
-	return e.After.GetModificationTime()
-}
-
 // leaseAcquirer is an interface containing the methods on *lease.Manager used
 // by the schema feed.
 type leaseAcquirer interface {
