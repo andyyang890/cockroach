@@ -13,6 +13,7 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
+	"golang.org/x/exp/slices"
 )
 
 // TableEvent represents a change to a table descriptor.
@@ -35,4 +36,31 @@ func formatEvent(e TableEvent) string {
 
 func formatDesc(desc catalog.TableDescriptor) string {
 	return fmt.Sprintf("%d:%d@%v", desc.GetID(), desc.GetVersion(), desc.GetModificationTime())
+}
+
+// sortedTableEvents contains a sorted list of table events.
+// It is used internally by schemaFeed.
+type sortedTableEvents struct {
+	events []TableEvent
+}
+
+func (e sortedTableEvents) peek(atOrBefore hlc.Timestamp) []TableEvent {
+	i := e.prefixEndIndex(atOrBefore)
+	return e.events[:i]
+}
+
+func (e sortedTableEvents) pop(atOrBefore hlc.Timestamp) []TableEvent {
+	i := e.prefixEndIndex(atOrBefore)
+	ret := e.events[:i]
+	e.events = e.events[i:]
+	return ret
+}
+
+// prefixEndIndex returns the exclusive end index for the prefix of events that
+// have timestamps at or before atOrBefore.
+func (e sortedTableEvents) prefixEndIndex(atOrBefore hlc.Timestamp) int {
+	i, _ := slices.BinarySearchFunc(e.events, atOrBefore, func(event TableEvent, timestamp hlc.Timestamp) int {
+		return event.Timestamp().Compare(timestamp)
+	})
+	return i
 }

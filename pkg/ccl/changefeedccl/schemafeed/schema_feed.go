@@ -818,6 +818,7 @@ func (tf *schemaFeed) fetchDescriptorVersions(
 						origName = t.StatementTimeName
 						return found // sentinel error to break the loop
 					})
+					// TODO(yang): This is not right because the schema change could've changed it
 					isType := tf.mu.typeDeps.containsType(descpb.ID(id))
 					// Check if the descriptor is an interesting table or type.
 					if !(isTable || isType) {
