@@ -7,6 +7,7 @@ go_library(
         "gen-tableEventType-stringer",  # keep
         "metrics.go",
         "schema_feed.go",
+        "table_event.go",
         "table_event_filter.go",
         "timestamp_barrier.go",
     ],

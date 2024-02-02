@@ -45,16 +45,6 @@ import (
 // too hard. Each registered queue would have a start time. You'd scan from the
 // earliest and just ingest the relevant descriptors.
 
-// TableEvent represents a change to a table descriptor.
-type TableEvent struct {
-	Before, After catalog.TableDescriptor
-}
-
-// Timestamp refers to the ModificationTime of the After table descriptor.
-func (e TableEvent) Timestamp() hlc.Timestamp {
-	return e.After.GetModificationTime()
-}
-
 // leaseAcquirer is an interface containing the methods on *lease.Manager used
 // by the schema feed.
 type leaseAcquirer interface {
@@ -624,18 +614,6 @@ func (tf *schemaFeed) adjustTimestamps(startTS, endTS hlc.Timestamp, validateErr
 		return errors.Errorf(`gap between %s and %s`, frontier, startTS)
 	}
 	return tf.mu.ts.advanceFrontier(endTS)
-}
-
-func (e TableEvent) String() string {
-	return formatEvent(e)
-}
-
-func formatDesc(desc catalog.TableDescriptor) string {
-	return fmt.Sprintf("%d:%d@%v", desc.GetID(), desc.GetVersion(), desc.GetModificationTime())
-}
-
-func formatEvent(e TableEvent) string {
-	return fmt.Sprintf("%v->%v", formatDesc(e.Before), formatDesc(e.After))
 }
 
 func (tf *schemaFeed) validateDescriptor(
