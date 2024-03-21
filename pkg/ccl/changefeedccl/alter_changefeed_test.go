@@ -1340,11 +1340,14 @@ func TestAlterChangefeedAddTargetsDuringBackfill(t *testing.T) {
 			Changefeed.(*TestingKnobs)
 
 		// Ensure Scan Requests are always small enough that we receive multiple
-		// resolvedFoo events during a backfill
+		// resolvedFoo events during a backfill.
+		const maxBatchSize = numRowsPerTable / 10
 		knobs.FeedKnobs.BeforeScanRequest = func(b *kv.Batch) error {
 			rndMu.Lock()
 			defer rndMu.Unlock()
-			b.Header.MaxSpanRequestKeys = 1 + rnd.Int63n(100)
+			maxSpanRequestKeys := 1 + rnd.Int63n(maxBatchSize-1)
+			b.Header.MaxSpanRequestKeys = maxSpanRequestKeys
+			t.Logf("set max span request keys: %d", maxSpanRequestKeys)
 			return nil
 		}
 
@@ -1422,6 +1425,7 @@ func TestAlterChangefeedAddTargetsDuringBackfill(t *testing.T) {
 		// Collect spans we attempt to resolve after when we resume.
 		var resolvedFoo []roachpb.Span
 		knobs.FilterSpanWithMutation = func(r *jobspb.ResolvedSpan) (bool, error) {
+			t.Logf("resolved span after alter: %#v", r)
 			if !r.Span.Equal(fooTableSpan) {
 				resolvedFoo = append(resolvedFoo, r.Span)
 			}
