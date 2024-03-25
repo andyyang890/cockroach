@@ -407,7 +407,7 @@ func newRangeDistributionTester(
 	sqlDB.ExecMultiple(t,
 		"CREATE TABLE x (id INT PRIMARY KEY)",
 		"INSERT INTO x SELECT generate_series(0, 63)",
-		"ALTER TABLE x SPLIT AT SELECT id FROM x WHERE id > 0",
+		"ALTER TABLE x SPLIT AT SELECT generate_series(0, 64)",
 	)
 
 	// Distribute the leases exponentially across the first 5 nodes.
