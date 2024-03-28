@@ -1074,6 +1074,11 @@ func registerCDC(r registry.Registry) {
 			ct := newCDCTester(ctx, t, c)
 			defer ct.Close()
 
+			_, err := ct.DB().Exec(`ALTER ROLE ALL SET disable_changefeed_replication TO on`)
+			if err != nil {
+				t.Fatalf("failed to set default session variable")
+			}
+
 			ct.runTPCCWorkload(tpccArgs{warehouses: 1000, duration: "120m"})
 
 			feed := ct.newChangefeed(feedArgs{
