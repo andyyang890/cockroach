@@ -671,7 +671,7 @@ func (r *testRunner) runWorker(
 			!testToRun.spec.Suites.Contains(registry.Weekly) &&
 			rand.Float64() <= 0.5 {
 			l.PrintfCtx(ctx, "using spot VMs to run test %s", testToRun.spec.Name)
-			testToRun.spec.Cluster.UseSpotVMs = true
+			//testToRun.spec.Cluster.UseSpotVMs = true
 		}
 
 		if roachtestflags.UseSpotVM {
