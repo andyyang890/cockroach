@@ -318,6 +318,7 @@ func newKVFeed(
 var errChangefeedCompleted = errors.New("changefeed completed")
 
 func (f *kvFeed) run(ctx context.Context) (err error) {
+	log.Info(ctx, "starting the kvfeed")
 	emitResolved := func(ts hlc.Timestamp, boundary jobspb.ResolvedSpan_BoundaryType) error {
 		for _, sp := range f.spans {
 			if err := f.writer.Add(ctx, kvevent.NewBackfillResolvedEvent(sp, ts, boundary)); err != nil {
@@ -336,6 +337,7 @@ func (f *kvFeed) run(ctx context.Context) (err error) {
 	}
 
 	for i := 0; ; i++ {
+		log.Infof(ctx, "kv feed loop iteration %d", i)
 		initialScan := i == 0
 		initialScanOnly := f.endTime.EqOrdering(f.initialHighWater)
 		scannedSpans, scannedTS, err := f.scanIfShould(ctx, initialScan, initialScanOnly, rangeFeedResumeFrontier.Frontier())
@@ -520,6 +522,7 @@ func (f *kvFeed) scanIfShould(
 	if initialScanOnly {
 		boundaryType = jobspb.ResolvedSpan_EXIT
 	}
+	log.Infof(ctx, "doing a scan for spans: %#v", spansToBackfill)
 	if err := f.scanner.Scan(ctx, f.writer, scanConfig{
 		Spans:     spansToBackfill,
 		Timestamp: scanTime,

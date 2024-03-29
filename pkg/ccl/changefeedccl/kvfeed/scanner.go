@@ -61,7 +61,7 @@ func (p *scanRequestScanner) Scan(ctx context.Context, sink kvevent.Writer, cfg 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	if log.V(2) {
+	if true {
 		var sp roachpb.Spans = cfg.Spans
 		log.Infof(ctx, "performing scan on %s at %v withDiff %v",
 			sp, cfg.Timestamp, cfg.WithDiff)
@@ -116,7 +116,7 @@ func (p *scanRequestScanner) Scan(ctx context.Context, sink kvevent.Writer, cfg 
 			if backfillDec != nil {
 				backfillDec()
 			}
-			if log.V(2) {
+			if true {
 				log.Infof(ctx, `exported %d of %d: %v`, finished, len(spans), err)
 			}
 			return err
@@ -176,7 +176,7 @@ func (p *scanRequestScanner) exportSpan(
 	knobs TestingKnobs,
 ) error {
 	txn := p.db.NewTxn(ctx, "changefeed backfill")
-	if log.V(2) {
+	if true {
 		log.Infof(ctx, `sending ScanRequest %s at %s`, span, ts)
 	}
 	if err := txn.SetFixedTimestamp(ctx, ts); err != nil {
@@ -241,7 +241,7 @@ func (p *scanRequestScanner) exportSpan(
 	); err != nil {
 		return err
 	}
-	if log.V(2) {
+	if true {
 		log.Infof(ctx, `finished Scan of %s at %s took %s`,
 			span, ts.AsOfSystemTime(), timeutil.Since(stopwatchStart))
 	}

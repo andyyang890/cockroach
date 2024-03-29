@@ -1106,13 +1106,17 @@ func registerCDC(r registry.Registry) {
 			feed := ct.newChangefeed(feedArgs{
 				sinkType: cloudStorageSink,
 				targets:  allTpccTargets,
-				opts:     map[string]string{"initial_scan": "'no'"},
+				opts: map[string]string{
+					"initial_scan": "'no'",
+					"diff":         "",
+				},
 			})
 			ct.runFeedLatencyVerifier(feed, latencyTargets{
 				initialScanLatency: 3 * time.Minute,
 				steadyLatency:      10 * time.Minute,
 			})
 			ct.waitForWorkload()
+			t.Fatal("fail test to collect artifacts")
 		},
 	})
 	r.Add(registry.TestSpec{
