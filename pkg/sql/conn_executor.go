@@ -3621,6 +3621,7 @@ func (ex *connExecutor) asOfClauseWithSessionDefault(expr tree.AsOfClause) tree.
 // disable_changefeed_replication session variable.
 func (ex *connExecutor) omitInRangefeeds() bool {
 	if ex.sessionData() == nil {
+		log.Warningf(context.Background(), "session data in omitInRangefeeds is nil")
 		return false
 	}
 	return ex.sessionData().DisableChangefeedReplication
