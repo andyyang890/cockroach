@@ -12,6 +12,7 @@ package sql
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -234,6 +235,7 @@ func (ts *txnState) resetForNewSQLTxn(
 			ts.mu.txn = kv.NewTxnWithSteppingEnabled(ts.Ctx, tranCtx.db, tranCtx.nodeIDOrZero, qualityOfService)
 			ts.mu.txn.SetDebugName(opName)
 			if omitInRangefeeds {
+				fmt.Printf("[sender] transaction ID: %s\n", ts.mu.txn.ID())
 				ts.mu.txn.SetOmitInRangefeeds()
 			}
 			if err := ts.setPriorityLocked(priority); err != nil {
