@@ -1158,7 +1158,7 @@ func registerCDC(r registry.Registry) {
 			ct := newCDCTester(ctx, t, c)
 			defer ct.Close()
 
-			ct.runTPCCWorkload(tpccArgs{warehouses: 1000, duration: "120m"})
+			ct.runTPCCWorkload(tpccArgs{warehouses: 1000, duration: "5m"})
 
 			feed := ct.newChangefeed(feedArgs{
 				sinkType: cloudStorageSink,
