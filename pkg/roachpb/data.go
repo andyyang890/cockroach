@@ -20,6 +20,7 @@ import (
 	"hash/crc32"
 	"math"
 	"math/rand"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"sync"
@@ -1376,6 +1377,10 @@ func (t *Transaction) Update(o *Transaction) {
 	// function.
 	t.AdmissionPriority = o.AdmissionPriority
 	// OmitInRangefeeds doesn't change.
+	if t.OmitInRangefeeds && !o.OmitInRangefeeds {
+		stack := string(debug.Stack())
+		log.Warningf(ctx, "OmitInRangefeeds is overwritten from true to false. stack: %s", stack)
+	}
 	t.OmitInRangefeeds = o.OmitInRangefeeds
 }
 
