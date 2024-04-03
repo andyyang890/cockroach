@@ -295,6 +295,7 @@ func EndTxn(
 		// supplied ba.Txn if we return it with an error which might be
 		// retried, as for example to avoid client-side serializable restart.
 		reply.Txn = &existingTxn
+		reply.Txn.OmitInRangefeeds = cArgs.OmitInRangefeeds
 
 		// Verify that we can either commit it or abort it (according
 		// to args.Commit), and also that the Timestamp and Epoch have
