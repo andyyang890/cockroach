@@ -1377,12 +1377,13 @@ func (t *Transaction) Update(o *Transaction) {
 	// function.
 	t.AdmissionPriority = o.AdmissionPriority
 	// OmitInRangefeeds doesn't change.
-	if t.OmitInRangefeeds && !o.OmitInRangefeeds {
-		stack := string(debug.Stack())
-		log.Warningf(ctx, "OmitInRangefeeds is overwritten from true to false. stack: %s", stack)
-	}
+	//if t.OmitInRangefeeds && !o.OmitInRangefeeds {
+	//	stack := string(debug.Stack())
+	//	log.Warningf(ctx, "OmitInRangefeeds is overwritten from true to false. stack: %s", stack)
+	//}
 	if !t.OmitInRangefeeds && o.OmitInRangefeeds {
-		log.Errorf(ctx, "unexpectedly setting OmitInRangefeeds to true via Update")
+		stack := string(debug.Stack())
+		log.Errorf(ctx, "unexpectedly setting OmitInRangefeeds to true via Update. stack: %s", stack)
 	}
 }
 
