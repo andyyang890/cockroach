@@ -1381,9 +1381,6 @@ func (t *Transaction) Update(o *Transaction) {
 		stack := string(debug.Stack())
 		log.Warningf(ctx, "OmitInRangefeeds is overwritten from true to false. stack: %s", stack)
 	}
-	if !t.OmitInRangefeeds {
-		t.OmitInRangefeeds = o.OmitInRangefeeds
-	}
 }
 
 // UpgradePriority sets transaction priority to the maximum of current
