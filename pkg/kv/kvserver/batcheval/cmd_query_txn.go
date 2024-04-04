@@ -86,7 +86,6 @@ func QueryTxn(
 		// Attempt to synthesize it from the provided TxnMeta.
 		reply.QueriedTxn = SynthesizeTxnFromMeta(ctx, cArgs.EvalCtx, args.Txn)
 	}
-	reply.QueriedTxn.OmitInRangefeeds = cArgs.OmitInRangefeeds
 
 	// Get the list of txns waiting on this txn.
 	reply.WaitingTxns = cArgs.EvalCtx.GetConcurrencyManager().GetDependents(args.Txn.ID)
