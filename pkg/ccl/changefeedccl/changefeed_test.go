@@ -6904,6 +6904,29 @@ func TestChangefeedOrderingWithErrors(t *testing.T) {
 	cdcTest(t, testFn, feedTestForceSink("webhook"), feedTestNoExternalConnection)
 }
 
+func TestChangefeedPerKeyOrdering(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
+		sqlDB := sqlutils.MakeSQLRunner(s.DB)
+		sqlDB.Exec(t, `CREATE TABLE foo (id INT PRIMARY KEY, s STRING)`)
+
+		foo := feed(t, f, `CREATE CHANGEFEED FOR foo WITH updated, diff, initial_scan = 'no'`)
+		defer closeFeed(t, foo)
+
+		sqlDB.Exec(t, `INSERT INTO foo VALUES (1, 'a')`)
+		sqlDB.Exec(t, `UPDATE foo SET s = 'b' WHERE id = 1`)
+		sqlDB.Exec(t, `UPDATE foo SET s = 'c' WHERE id = 1`)
+		assertPayloadsPerKeyOrderedStripTs(t, foo, []string{
+			`foo: [1]->{"after": {"id": 1, "s": "a"}, "before": null}`,
+			`foo: [1]->{"after": {"id": 1, "s": "b"}, "before": {"id": 1, "s": "a"}}`,
+			`foo: [1]->{"after": {"id": 1, "s": "c"}, "before": {"id": 1, "s": "b"}}`,
+		})
+	}
+	cdcTest(t, testFn, feedTestEnterpriseSinks)
+}
+
 func TestChangefeedOnErrorOption(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
