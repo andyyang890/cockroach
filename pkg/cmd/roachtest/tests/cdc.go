@@ -796,7 +796,7 @@ func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
 	m := c.NewMonitor(workloadCtx, crdbNodes)
 	var doneAtomic int64
 	messageBuf := make(chan *sarama.ConsumerMessage, 4096)
-	const requestedResolved = 100
+	const requestedResolved = 1000000
 
 	m.Go(func(ctx context.Context) error {
 		err := c.RunE(ctx, option.WithNodes(workloadNode), `./workload run bank {pgurl:1} --max-rate=10`)
@@ -901,6 +901,14 @@ func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
 			return errors.Newf("validator failures:\n%s", strings.Join(failures, "\n"))
 		}
 		return nil
+	})
+	m.Go(func(ctx context.Context) error {
+		period, downTime := 2*time.Minute, 20*time.Second
+		err := kafka.chaosLoop(ctx, period, downTime, nil /* stopper */)
+		if atomic.LoadInt64(&doneAtomic) > 0 {
+			return nil
+		}
+		return err
 	})
 	m.Wait()
 }
