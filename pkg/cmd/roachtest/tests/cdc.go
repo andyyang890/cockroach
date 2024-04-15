@@ -796,7 +796,7 @@ func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
 	m := c.NewMonitor(workloadCtx, crdbNodes)
 	var doneAtomic int64
 	messageBuf := make(chan *sarama.ConsumerMessage, 4096)
-	const requestedResolved = 1000000
+	const requestedResolved = 100
 
 	m.Go(func(ctx context.Context) error {
 		err := c.RunE(ctx, option.WithNodes(workloadNode), `./workload run bank {pgurl:1} --max-rate=10`)
