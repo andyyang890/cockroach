@@ -903,7 +903,7 @@ func runCDCBank(ctx context.Context, t test.Test, c cluster.Cluster) {
 		return nil
 	})
 	m.Go(func(ctx context.Context) error {
-		period, downTime := 2*time.Minute, 20*time.Second
+		period, downTime := 5*time.Minute, 1*time.Second
 		err := kafka.chaosLoop(ctx, period, downTime, nil /* stopper */)
 		if atomic.LoadInt64(&doneAtomic) > 0 {
 			return nil
