@@ -107,6 +107,8 @@ type cdcTester struct {
 
 	workloadWg *sync.WaitGroup
 	doneCh     chan struct{}
+
+	kafka kafkaManager
 }
 
 // The node on which the webhook sink will be installed and run on.
@@ -239,21 +241,60 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 		sinkURI = changefeedccl.GcpScheme + `://cockroach-ephemeral` + "?AUTH=implicit&topic_name=pubsubSink-roachtest&region=us-east1"
 	case kafkaSink:
 		kafkaNode := ct.kafkaSinkNode()
-		kafka := kafkaManager{
-			t:             ct.t,
-			c:             ct.cluster,
-			kafkaSinkNode: kafkaNode,
-			mon:           ct.mon,
-		}
-		kafka.install(ct.ctx)
-		kafka.start(ct.ctx, "kafka")
+		kafka, _ := setupKafka(context.TODO(), ct.t, ct.cluster, kafkaNode)
+		ct.kafka = kafka
 
 		if args.kafkaChaos {
 			ct.mon.Go(func(ctx context.Context) error {
-				period, downTime := 2*time.Minute, 20*time.Second
+				period, downTime := 1*time.Minute, 5*time.Second
 				return kafka.chaosLoop(ctx, period, downTime, ct.doneCh)
 			})
 		}
+
+		// TODO(yang): Gate this with an arg.
+		ct.mon.Go(func(ctx context.Context) error {
+			v := cdctest.MakeCountValidator(cdctest.NewOrderValidator("t"))
+			tc, err := ct.kafka.newConsumer(ctx, "t")
+			if err != nil {
+				ct.t.Fatalf("failed to create consumer: %s", err)
+			}
+			defer tc.Close()
+			for {
+				select {
+				case <-ct.doneCh:
+					ct.t.L().Printf("validated %d rows in total (1)", v.NumRows)
+					return nil
+				case <-ctx.Done():
+					ct.t.L().Printf("validated %d rows in total (2)", v.NumRows)
+					return nil
+				default:
+				}
+
+				m := tc.Next(ctx)
+				if m == nil {
+					ct.t.L().Printf("validated %d rows in total (3)", v.NumRows)
+					return nil
+				}
+				if len(m.Key) == 0 {
+					continue
+				}
+				updated, _, err := cdctest.ParseJSONValueTimestamps(m.Value)
+				if err != nil {
+					return err
+				}
+				partitionStr := strconv.Itoa(int(m.Partition))
+				err = v.NoteRow(partitionStr, string(m.Key), string(m.Value), updated)
+				if err != nil {
+					return err
+				}
+				if v.NumRows%1000 == 0 {
+					ct.t.L().Printf("validated %d rows", v.NumRows)
+				}
+				if len(v.Failures()) > 0 {
+					ct.t.Fatal(v.Failures())
+				}
+			}
+		})
 
 		sinkURI = kafka.sinkURL(ct.ctx)
 	case azureEventHubKafkaSink:
@@ -262,7 +303,6 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 			t:             ct.t,
 			c:             ct.cluster,
 			kafkaSinkNode: kafkaNode,
-			mon:           ct.mon,
 		}
 		kafka.install(ct.ctx)
 		kafka.start(ct.ctx, "kafka")
@@ -1295,9 +1335,8 @@ func registerCDC(r registry.Registry) {
 		},
 	})
 	r.Add(registry.TestSpec{
-		Name:             "cdc/sink-chaos",
+		Name:             "cdc/kafka-chaos",
 		Owner:            `cdc`,
-		Benchmark:        true,
 		Cluster:          r.MakeClusterSpec(4, spec.CPU(16)),
 		Leases:           registry.MetamorphicLeases,
 		CompatibleClouds: registry.AllExceptAWS,
@@ -1307,19 +1346,52 @@ func registerCDC(r registry.Registry) {
 			ct := newCDCTester(ctx, t, c)
 			defer ct.Close()
 
-			ct.runTPCCWorkload(tpccArgs{warehouses: 100, duration: "30m"})
+			_, err := ct.DB().ExecContext(ctx, `CREATE TABLE t (id INT PRIMARY KEY, x INT);`)
+			if err != nil {
+				t.Fatal("failed to create table")
+			}
 
 			feed := ct.newChangefeed(feedArgs{
 				sinkType:   kafkaSink,
-				targets:    allTpccTargets,
+				targets:    []string{"t"},
 				kafkaChaos: true,
-				opts:       map[string]string{"initial_scan": "'no'"},
+				opts: map[string]string{
+					"updated":                       "",
+					"initial_scan":                  "'no'",
+					"min_checkpoint_frequency":      "'3s'",
+					"protect_data_from_gc_on_pause": "",
+					"on_error":                      "pause",
+					"kafka_sink_config":             `'{"Flush": {"MaxMessages": 100, "Frequency": "1s","Messages": 100 }, "Version": "2.7.2", "RequiredAcks": "ALL","Compression": "GZIP"}'`,
+				},
 			})
+
 			ct.runFeedLatencyVerifier(feed, latencyTargets{
-				initialScanLatency: 3 * time.Minute,
-				steadyLatency:      5 * time.Minute,
+				steadyLatency: 5 * time.Minute,
 			})
-			ct.waitForWorkload()
+			conn1, err := ct.DB().Conn(ctx)
+			if err != nil {
+				t.Fatalf("failed to create a conn: %s", err)
+			}
+			defer conn1.Close()
+			conn2, err := ct.DB().Conn(ctx)
+			if err != nil {
+				t.Fatalf("failed to create a conn: %s", err)
+			}
+			defer conn2.Close()
+			for i := 0; i < 100000; i++ {
+				stmt := fmt.Sprintf(`UPDATE t SET x = %d WHERE id = 1;`, i)
+				if i == 0 {
+					stmt = fmt.Sprintf(`INSERT INTO t VALUES (1, %d);`, i)
+				}
+				if i%2 == 0 {
+					_, err = conn1.ExecContext(ctx, stmt)
+				} else {
+					_, err = conn2.ExecContext(ctx, stmt)
+				}
+				if err != nil {
+					t.Fatalf("failed to execute stmt %q: %s", stmt, err)
+				}
+			}
 		},
 	})
 	r.Add(registry.TestSpec{
@@ -1611,7 +1683,6 @@ func registerCDC(r registry.Registry) {
 				t:             ct.t,
 				c:             ct.cluster,
 				kafkaSinkNode: kafkaNode,
-				mon:           ct.mon,
 				useKafka2:     true, // The broker-side oauth configuration used only works with Kafka 2
 			}
 			kafka.install(ct.ctx)
@@ -2123,7 +2194,6 @@ type kafkaManager struct {
 	t             test.Test
 	c             cluster.Cluster
 	kafkaSinkNode option.NodeListOption
-	mon           cluster.Monitor
 
 	// Our method of requiring OAuth on the broker only works with Kafka 2
 	useKafka2 bool
@@ -2638,7 +2708,7 @@ func (k kafkaManager) chaosLoop(
 ) error {
 	t := time.NewTicker(period)
 	defer t.Stop()
-	for {
+	for i := 0; ; i++ {
 		select {
 		case <-stopper:
 			return nil
@@ -2647,6 +2717,7 @@ func (k kafkaManager) chaosLoop(
 		case <-t.C:
 		}
 
+		k.t.L().Printf("kafka chaos loop %d: stopping", i)
 		k.stop(ctx)
 
 		select {
@@ -2657,6 +2728,7 @@ func (k kafkaManager) chaosLoop(
 		case <-time.After(downTime):
 		}
 
+		k.t.L().Printf("kafka chaos loop %d: restarting", i)
 		k.restart(ctx, "kafka")
 	}
 }
