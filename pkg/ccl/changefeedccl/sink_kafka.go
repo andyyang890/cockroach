@@ -199,6 +199,8 @@ type saramaConfig struct {
 		MaxMessages int          `json:",omitempty"`
 	}
 
+	// TODO add the option here
+
 	Compression compressionCodec `json:",omitempty"`
 
 	RequiredAcks string `json:",omitempty"`
@@ -206,7 +208,7 @@ type saramaConfig struct {
 	Version string `json:",omitempty"`
 }
 
-func (c saramaConfig) Validate() error {
+func (c *saramaConfig) Validate() error {
 	// If Flush.Bytes > 0 or Flush.Messages > 1 without
 	// Flush.Frequency, sarama may wait forever to flush the
 	// messages to Kafka.  We want to guard against such
@@ -1188,6 +1190,9 @@ func buildKafkaConfig(
 	config := sarama.NewConfig()
 	config.Producer.Return.Successes = true
 	config.Producer.Partitioner = newChangefeedPartitioner
+	config.Producer.Idempotent = true
+	config.Producer.RequiredAcks = sarama.WaitForAll
+	config.Net.MaxOpenRequests = 1
 	// Do not fetch metadata for all topics but just for the necessary ones.
 	config.Metadata.Full = false
 	config.MetricRegistry = newMetricsRegistryInterceptor(kafkaThrottlingMetrics)
