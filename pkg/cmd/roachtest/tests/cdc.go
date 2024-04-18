@@ -276,20 +276,27 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 					ct.t.L().Printf("validated %d rows in total (3)", v.NumRows)
 					break
 				}
-				if len(m.Key) == 0 {
-					continue
-				}
-				updated, _, err := cdctest.ParseJSONValueTimestamps(m.Value)
+				updated, resolved, err := cdctest.ParseJSONValueTimestamps(m.Value)
 				if err != nil {
 					return err
 				}
 				partitionStr := strconv.Itoa(int(m.Partition))
-				err = v.NoteRow(partitionStr, string(m.Key), string(m.Value), updated)
-				if err != nil {
-					return err
-				}
-				if v.NumRows%1000 == 0 {
-					ct.t.L().Printf("validated %d rows", v.NumRows)
+				if len(m.Key) > 0 {
+					err := v.NoteRow(partitionStr, string(m.Key), string(m.Value), updated)
+					if err != nil {
+						return err
+					}
+					if v.NumRows%1000 == 0 {
+						ct.t.L().Printf("validated %d rows", v.NumRows)
+					}
+				} else {
+					err := v.NoteResolved(partitionStr, resolved)
+					if err != nil {
+						return err
+					}
+					if v.NumResolved%10 == 0 {
+						ct.t.L().Printf("validated %d resolved timestamps", v.NumResolved)
+					}
 				}
 			}
 			if failures := v.Failures(); len(failures) > 0 {
@@ -1359,8 +1366,9 @@ func registerCDC(r registry.Registry) {
 				kafkaChaos: true,
 				opts: map[string]string{
 					"updated":                       "",
+					"resolved":                      "",
 					"initial_scan":                  "'no'",
-					"min_checkpoint_frequency":      "'3s'",
+					"min_checkpoint_frequency":      "'1s'",
 					"protect_data_from_gc_on_pause": "",
 					"on_error":                      "pause",
 					"kafka_sink_config":             `'{"Flush": {"MaxMessages": 100, "Frequency": "1s","Messages": 100 }, "Version": "2.7.2", "RequiredAcks": "ALL","Compression": "GZIP"}'`,
