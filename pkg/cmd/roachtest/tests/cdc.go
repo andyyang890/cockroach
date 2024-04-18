@@ -1136,7 +1136,10 @@ func registerCDC(r registry.Registry) {
 			feed := ct.newChangefeed(feedArgs{
 				sinkType: kafkaSink,
 				targets:  allTpccTargets,
-				opts:     map[string]string{"initial_scan": "'no'"},
+				opts: map[string]string{
+					"initial_scan": "'no'",
+					"resolved":     "",
+				},
 			})
 			ct.runFeedLatencyVerifier(feed, latencyTargets{
 				initialScanLatency: 3 * time.Minute,
@@ -2746,7 +2749,7 @@ func (k kafkaManager) createTopic(ctx context.Context, topic string) error {
 			return errors.Wrap(err, "admin client")
 		}
 		return admin.CreateTopic(topic, &sarama.TopicDetail{
-			NumPartitions:     1,
+			NumPartitions:     5,
 			ReplicationFactor: 1,
 		}, false)
 	})

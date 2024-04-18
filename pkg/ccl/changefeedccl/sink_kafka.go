@@ -377,6 +377,10 @@ func (s *kafkaSink) EmitRow(
 	return s.emitMessage(ctx, msg)
 }
 
+type resolvedMetadata struct {
+	partition int32
+}
+
 // EmitResolvedTimestamp implements the Sink interface.
 func (s *kafkaSink) EmitResolvedTimestamp(
 	ctx context.Context, encoder Encoder, resolved hlc.Timestamp,
@@ -419,6 +423,7 @@ func (s *kafkaSink) EmitResolvedTimestamp(
 				Partition: partition,
 				Key:       nil,
 				Value:     sarama.ByteEncoder(payload),
+				Metadata:  resolvedMetadata{partition: partition},
 			}
 			if err := s.emitMessage(ctx, msg); err != nil {
 				return err
@@ -621,6 +626,11 @@ func (s *kafkaSink) finishProducerMessage(ackMsg *sarama.ProducerMessage, ackErr
 			m.updateMetrics(m.mvcc, sz, sinkDoesNotCompress)
 		}
 		m.alloc.Release(s.ctx)
+	}
+	if m, ok := ackMsg.Metadata.(resolvedMetadata); ok {
+		if m.partition != ackMsg.Partition {
+			panic(fmt.Sprintf("partition mismatch, requested %d, sent to %d", m.partition, ackMsg.Partition))
+		}
 	}
 	if s.mu.flushErr == nil && ackError != nil {
 		s.mu.flushErr = ackError
