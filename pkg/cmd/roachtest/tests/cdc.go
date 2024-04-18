@@ -259,21 +259,22 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 				ct.t.Fatalf("failed to create consumer: %s", err)
 			}
 			defer tc.Close()
+		ConsumeLoop:
 			for {
 				select {
 				case <-ct.doneCh:
 					ct.t.L().Printf("validated %d rows in total (1)", v.NumRows)
-					return nil
+					break ConsumeLoop
 				case <-ctx.Done():
 					ct.t.L().Printf("validated %d rows in total (2)", v.NumRows)
-					return nil
+					break ConsumeLoop
 				default:
 				}
 
 				m := tc.Next(ctx)
 				if m == nil {
 					ct.t.L().Printf("validated %d rows in total (3)", v.NumRows)
-					return nil
+					break
 				}
 				if len(m.Key) == 0 {
 					continue
@@ -290,10 +291,11 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 				if v.NumRows%1000 == 0 {
 					ct.t.L().Printf("validated %d rows", v.NumRows)
 				}
-				if len(v.Failures()) > 0 {
-					ct.t.Fatal(v.Failures())
-				}
 			}
+			if failures := v.Failures(); len(failures) > 0 {
+				return errors.Newf("validator failures:\n%s", strings.Join(failures, "\n"))
+			}
+			return nil
 		})
 
 		sinkURI = kafka.sinkURL(ct.ctx)
