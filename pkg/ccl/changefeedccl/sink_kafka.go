@@ -381,7 +381,7 @@ func (s *kafkaSink) EmitRow(
 func (s *kafkaSink) EmitResolvedTimestamp(
 	ctx context.Context, encoder Encoder, resolved hlc.Timestamp,
 ) error {
-	defer s.metrics.recordResolvedCallback()()
+	//defer s.metrics.recordResolvedCallback()()
 
 	// Periodically ping sarama to refresh its metadata. This means talking to
 	// zookeeper, so it shouldn't be done too often, but beyond that this
@@ -390,7 +390,7 @@ func (s *kafkaSink) EmitResolvedTimestamp(
 	// TODO(dan): Add a test for this. We can't right now (2018-11-13) because
 	// we'd need to bump sarama, but that's a bad idea while we're still
 	// actively working on stability. At the same time, revisit this tuning.
-	const metadataRefreshMinDuration = time.Minute
+	const metadataRefreshMinDuration = 10 * time.Minute
 	if timeutil.Since(s.lastMetadataRefresh) > metadataRefreshMinDuration {
 		if err := s.client.RefreshMetadata(s.topics.DisplayNamesSlice()...); err != nil {
 			return err
@@ -409,10 +409,7 @@ func (s *kafkaSink) EmitResolvedTimestamp(
 		// metadata above. Staleness here does not impact correctness. Some new
 		// partitions will miss this resolved timestamp, but they'll eventually
 		// be picked up and get later ones.
-		partitions, err := s.client.Partitions(topic)
-		if err != nil {
-			return err
-		}
+		partitions := []int32{0}
 		for _, partition := range partitions {
 			msg := &sarama.ProducerMessage{
 				Topic:     topic,

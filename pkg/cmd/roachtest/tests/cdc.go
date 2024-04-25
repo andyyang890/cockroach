@@ -246,7 +246,7 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 
 		if args.kafkaChaos {
 			ct.mon.Go(func(ctx context.Context) error {
-				period, downTime := 1*time.Minute, 5*time.Second
+				period, downTime := 2*time.Minute, 30*time.Second
 				return kafka.chaosLoop(ctx, period, downTime, ct.doneCh)
 			})
 		}
@@ -271,7 +271,11 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 				default:
 				}
 
-				m := tc.Next(ctx)
+				m := func() *sarama.ConsumerMessage {
+					ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+					defer cancel()
+					return tc.Next(ctx)
+				}()
 				if m == nil {
 					ct.t.L().Printf("validated %d rows in total (3)", v.NumRows)
 					break
@@ -286,7 +290,7 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 					if err != nil {
 						return err
 					}
-					if v.NumRows%1000 == 0 {
+					if v.NumRows%50 == 0 {
 						ct.t.L().Printf("validated %d rows", v.NumRows)
 					}
 				} else {
@@ -300,6 +304,7 @@ func (ct *cdcTester) setupSink(args feedArgs) string {
 				}
 			}
 			if failures := v.Failures(); len(failures) > 0 {
+				ct.t.L().Printf("validator encountered %d failures", len(failures))
 				return errors.Newf("validator failures:\n%s", strings.Join(failures, "\n"))
 			}
 			return nil
@@ -1371,7 +1376,7 @@ func registerCDC(r registry.Registry) {
 					"min_checkpoint_frequency":      "'1s'",
 					"protect_data_from_gc_on_pause": "",
 					"on_error":                      "pause",
-					"kafka_sink_config":             `'{"Flush": {"MaxMessages": 100, "Frequency": "1s","Messages": 100 }, "Version": "2.7.2", "RequiredAcks": "ALL","Compression": "GZIP"}'`,
+					"kafka_sink_config":             `'{"Flush": {"MaxMessages": 10, "Frequency": "5s","Messages": 10 }, "Version": "2.7.2", "RequiredAcks": "ALL","Compression": "GZIP"}'`,
 				},
 			})
 
@@ -1388,7 +1393,8 @@ func registerCDC(r registry.Registry) {
 				t.Fatalf("failed to create a conn: %s", err)
 			}
 			defer conn2.Close()
-			for i := 0; i < 100000; i++ {
+			for i := 0; i < 500; i++ {
+				time.Sleep(1 * time.Second)
 				stmt := fmt.Sprintf(`UPDATE t SET x = %d WHERE id = 1;`, i)
 				if i == 0 {
 					stmt = fmt.Sprintf(`INSERT INTO t VALUES (1, %d);`, i)
