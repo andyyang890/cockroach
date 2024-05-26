@@ -58,8 +58,6 @@ func runCDCMultiRegionNullSink(ctx context.Context, t test.Test, c cluster.Clust
 		`ALTER RANGE default CONFIGURE ZONE USING num_replicas = 5, constraints = '{+rack=0: 2, +rack=1: 2, +rack=2: 1}', lease_preferences = '[[+rack=0], [+rack=1], [+rack=2]]'`,
 		//`SET CLUSTER SETTING changefeed.random_replica_selection.enabled = false`,
 		`SET CLUSTER SETTING kv.rangefeed.enabled = true`,
-		`CREATE TABLE t (id PRIMARY KEY, data) AS SELECT generate_series(1, 1000000), gen_random_uuid()`,
-		`ALTER TABLE t SPLIT AT SELECT id FROM t ORDER BY random() LIMIT 100`,
 	} {
 		if _, err := db.Exec(s); err != nil {
 			t.Fatal(err)
@@ -69,6 +67,15 @@ func runCDCMultiRegionNullSink(ctx context.Context, t test.Test, c cluster.Clust
 	t.L().Printf("restarting rack=1 nodes")
 	for _, n := range []int{2, 5, 8} {
 		if err := restart(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for _, s := range []string{
+		`CREATE TABLE t (id PRIMARY KEY, data) AS SELECT generate_series(1, 1000000), gen_random_uuid()`,
+		`ALTER TABLE t SPLIT AT SELECT id FROM t ORDER BY random() LIMIT 100`,
+	} {
+		if _, err := db.Exec(s); err != nil {
 			t.Fatal(err)
 		}
 	}
