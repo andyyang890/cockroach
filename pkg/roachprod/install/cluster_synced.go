@@ -79,10 +79,11 @@ func NewSyncedCluster(
 	}
 	c.Localities = make([]string, len(c.VMs))
 	for i := range c.VMs {
-		locality, err := c.VMs[i].Locality()
-		if err != nil {
-			return nil, err
-		}
+		//locality, err := c.VMs[i].Locality()
+		//if err != nil {
+		//	return nil, err
+		//}
+		var locality string
 		if c.NumRacks > 0 {
 			if locality != "" {
 				locality += ","
