@@ -14,6 +14,7 @@ package replicaoracle
 
 import (
 	"context"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"math"
 	"math/rand"
 	"sort"
@@ -271,6 +272,7 @@ func (o *binPackingOracle) ChoosePreferredReplica(
 ) (_ roachpb.ReplicaDescriptor, ignoreMisplannedRanges bool, _ error) {
 	// If we know the leaseholder, we choose it.
 	if leaseholder != nil {
+		log.VEventf(ctx, 2, "choosing leaseholder %s as preferred replica for range %s", leaseholder, desc)
 		return *leaseholder, false, nil
 	}
 

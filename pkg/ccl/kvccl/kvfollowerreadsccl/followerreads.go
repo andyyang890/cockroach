@@ -12,6 +12,7 @@ package kvfollowerreadsccl
 
 import (
 	"context"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"math"
 	"time"
 
@@ -261,6 +262,7 @@ func (r bulkOracle) ChoosePreferredReplica(
 	qs replicaoracle.QueryState,
 ) (_ roachpb.ReplicaDescriptor, ignoreMisplannedRanges bool, _ error) {
 	if leaseholder != nil && !checkFollowerReadsEnabled(r.cfg.Settings) {
+		log.VEventf(ctx, 2, "choosing leaseholder %s as preferred replica for range %s", leaseholder, desc)
 		return *leaseholder, false, nil
 	}
 
