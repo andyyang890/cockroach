@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/registry"
 	"github.com/cockroachdb/cockroach/pkg/cmd/roachtest/test"
 	"github.com/cockroachdb/cockroach/pkg/roachprod/install"
+	"time"
 )
 
 func registerCDCMultiRegion(r registry.Registry) {
@@ -80,6 +81,10 @@ func runCDCMultiRegionNullSink(ctx context.Context, t test.Test, c cluster.Clust
 		}
 	}
 
+	// TODO(yang): Maybe replace this with something that checks the number of replicas.
+	t.L().Printf("wait for ranges to replicate")
+	time.Sleep(time.Minute)
+
 	t.L().Printf("starting changefeed")
 	var jobID int
 	if err := db.QueryRow(
@@ -88,7 +93,7 @@ func runCDCMultiRegionNullSink(ctx context.Context, t test.Test, c cluster.Clust
 		t.Fatal(err)
 	}
 
-	t.L().Printf("waiting for changefeed %d...", jobID)
+	t.L().Printf("waiting for changefeed %d", jobID)
 	if _, err := db.ExecContext(ctx, "SHOW JOB WHEN COMPLETE $1", jobID); err != nil {
 		t.Fatal(err)
 	}
