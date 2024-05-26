@@ -2101,7 +2101,7 @@ func (ds *DistSender) sendToReplicas(
 		// First order by latency, then move the leaseholder to the front of the
 		// list, if it is known.
 		if !ds.dontReorderReplicas {
-			replicas.OptimizeReplicaOrder(ds.st, ds.getNodeID(), ds.HealthFunc(), ds.latencyFunc, ds.locality)
+			replicas.OptimizeReplicaOrder(ctx, ds.st, ds.getNodeID(), ds.HealthFunc(), ds.latencyFunc, ds.locality)
 		}
 
 		idx := -1
@@ -2120,7 +2120,7 @@ func (ds *DistSender) sendToReplicas(
 	case kvpb.RoutingPolicy_NEAREST:
 		// Order by latency.
 		log.VEvent(ctx, 2, "routing to nearest replica; leaseholder not required")
-		replicas.OptimizeReplicaOrder(ds.st, ds.getNodeID(), ds.HealthFunc(), ds.latencyFunc, ds.locality)
+		replicas.OptimizeReplicaOrder(ctx, ds.st, ds.getNodeID(), ds.HealthFunc(), ds.latencyFunc, ds.locality)
 
 	default:
 		log.Fatalf(ctx, "unknown routing policy: %s", ba.RoutingPolicy)
