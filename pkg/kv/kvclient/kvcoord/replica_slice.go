@@ -210,6 +210,7 @@ type HealthFunc func(roachpb.NodeID) bool
 // leaseholder is known by the caller, the caller will move it to the
 // front if appropriate.
 func (rs ReplicaSlice) OptimizeReplicaOrder(
+	ctx context.Context,
 	st *cluster.Settings,
 	nodeID roachpb.NodeID,
 	healthFn HealthFunc,
@@ -219,6 +220,7 @@ func (rs ReplicaSlice) OptimizeReplicaOrder(
 	// If we don't know which node we're on or its locality, and we don't have
 	// latency information to other nodes, send the RPCs randomly.
 	if nodeID == 0 && latencyFn == nil && len(locality.Tiers) == 0 {
+		log.VInfof(ctx, 2, "randomize replica order")
 		shuffle.Shuffle(rs)
 		return
 	}
@@ -237,15 +239,18 @@ func (rs ReplicaSlice) OptimizeReplicaOrder(
 			healthI := healthFn(rs[i].NodeID)
 			healthJ := healthFn(rs[j].NodeID)
 			if healthI != healthJ {
+				log.VInfof(ctx, 2, "unhealthy node, %d=%t, %d=%t", i, healthI, j, healthJ)
 				return healthI
 			}
 		}
 
 		// Replicas on the local node sort first.
 		if rs[i].NodeID == nodeID {
+			log.VInfof(ctx, 2, "local node first: %d", nodeID)
 			return true // i < j
 		}
 		if rs[j].NodeID == nodeID {
+			log.VInfof(ctx, 2, "local node first: %d", nodeID)
 			return false // j < i
 		}
 
@@ -253,6 +258,7 @@ func (rs ReplicaSlice) OptimizeReplicaOrder(
 			latencyI, okI := latencyFn(rs[i].NodeID)
 			latencyJ, okJ := latencyFn(rs[j].NodeID)
 			if okI && okJ {
+				log.VInfof(ctx, 2, "lower latency node, %d=%s, %d=%s", i, latencyI, j, latencyJ)
 				return latencyI < latencyJ
 			}
 		}
@@ -260,6 +266,7 @@ func (rs ReplicaSlice) OptimizeReplicaOrder(
 		attrMatchJ := localityMatch(locality.Tiers, rs[j].Tiers)
 		// Longer locality matches sort first (the assumption is that
 		// they'll have better latencies).
+		log.VInfof(ctx, 2, "higher locality-match node, %d=%d, %d=%d", i, attrMatchI, j, attrMatchJ)
 		return attrMatchI > attrMatchJ
 	})
 }

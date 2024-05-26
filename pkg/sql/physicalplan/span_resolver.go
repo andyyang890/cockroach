@@ -187,8 +187,10 @@ func (sr *spanResolver) NewSpanResolverIterator(
 ) SpanResolverIterator {
 	oracle := optionalOracle
 	if optionalOracle == nil {
+		log.Infof(context.TODO(), "using default span resolver oracle")
 		oracle = sr.oracle
 	}
+	log.Infof(context.TODO(), "span resolver oracle: %T", oracle)
 	return &spanResolverIterator{
 		txn:        txn,
 		it:         kvcoord.MakeRangeIterator(sr.distSender),
@@ -287,6 +289,7 @@ func (it *spanResolverIterator) ReplicaInfo(
 	// If we've assigned the range before, return that assignment.
 	rngID := it.it.Desc().RangeID
 	if repl, ok := it.queryState.AssignedRanges[rngID]; ok {
+		log.Infof(ctx, "returning previously assigned replica %s for range %s", repl.ReplDesc, rngID)
 		return repl.ReplDesc, repl.IgnoreMisplannedRanges, nil
 	}
 

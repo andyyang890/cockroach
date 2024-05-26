@@ -14,6 +14,7 @@ package replicaoracle
 
 import (
 	"context"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"math"
 	"math/rand"
 	"sort"
@@ -207,7 +208,7 @@ func (o *closestOracle) ChoosePreferredReplica(
 	if err != nil {
 		return roachpb.ReplicaDescriptor{}, false, err
 	}
-	replicas.OptimizeReplicaOrder(o.st, o.nodeID, o.healthFunc, o.latencyFunc, o.locality)
+	replicas.OptimizeReplicaOrder(ctx, o.st, o.nodeID, o.healthFunc, o.latencyFunc, o.locality)
 	repl := replicas[0].ReplicaDescriptor
 	// There are no "misplanned" ranges if we know the leaseholder, and we're
 	// deliberately choosing non-leaseholder.
@@ -268,21 +269,25 @@ func (o *binPackingOracle) ChoosePreferredReplica(
 ) (_ roachpb.ReplicaDescriptor, ignoreMisplannedRanges bool, _ error) {
 	// If we know the leaseholder, we choose it.
 	if leaseholder != nil {
+		log.VEventf(ctx, 2, "choosing leaseholder %s as preferred replica for range %s", leaseholder, desc)
 		return *leaseholder, false, nil
 	}
+	log.VEventf(ctx, 2, "leaseholder was empty for range %s", desc)
 
 	replicas, err := replicaSliceOrErr(ctx, o.nodeDescs, desc, kvcoord.OnlyPotentialLeaseholders)
 	if err != nil {
 		return roachpb.ReplicaDescriptor{}, false, err
 	}
-	replicas.OptimizeReplicaOrder(o.st, o.nodeID, o.healthFunc, o.latencyFunc, o.locality)
+	replicas.OptimizeReplicaOrder(ctx, o.st, o.nodeID, o.healthFunc, o.latencyFunc, o.locality)
 
 	// Look for a replica that has been assigned some ranges, but it's not yet full.
 	minLoad := int(math.MaxInt32)
 	var leastLoadedIdx int
 	for i, repl := range replicas {
+		log.VEventf(ctx, 2, "considering replica: %s", repl.ReplicaDescriptor)
 		assignedRanges := queryState.RangesPerNode.GetDefault(int(repl.NodeID))
 		if assignedRanges != 0 && assignedRanges < o.maxPreferredRangesPerLeaseHolder {
+			log.VEventf(ctx, 2, "choosing an underloaded replica: %s", repl.ReplicaDescriptor)
 			return repl.ReplicaDescriptor, false, nil
 		}
 		if assignedRanges < minLoad {
@@ -290,6 +295,7 @@ func (o *binPackingOracle) ChoosePreferredReplica(
 			minLoad = assignedRanges
 		}
 	}
+	log.VEventf(ctx, 2, "returning least-loaded/closest replica: %s", replicas[leastLoadedIdx].ReplicaDescriptor)
 	// Either no replica was assigned any previous ranges, or all replicas are
 	// full. Use the least-loaded one (if all the load is 0, then the closest
 	// replica is returned).

@@ -12,6 +12,7 @@ package kvfollowerreadsccl
 
 import (
 	"context"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"math"
 	"time"
 
@@ -172,8 +173,10 @@ func (o *followerReadOracle) ChoosePreferredReplica(
 ) (_ roachpb.ReplicaDescriptor, ignoreMisplannedRanges bool, _ error) {
 	var oracle replicaoracle.Oracle
 	if o.useClosestOracle(txn, ctPolicy) {
+		log.VInfof(ctx, 2, "using closest oracle")
 		oracle = o.closest
 	} else {
+		log.VInfof(ctx, 2, "using bin-packing oracle")
 		oracle = o.binPacking
 	}
 	return oracle.ChoosePreferredReplica(ctx, txn, desc, leaseholder, ctPolicy, queryState)
@@ -228,6 +231,7 @@ func (r bulkOracle) ChoosePreferredReplica(
 	_ replicaoracle.QueryState,
 ) (_ roachpb.ReplicaDescriptor, ignoreMisplannedRanges bool, _ error) {
 	if leaseholder != nil && !checkFollowerReadsEnabled(uuid.UUID{} /*not used*/, r.cfg.Settings) {
+		log.VInfof(ctx, 2, "choosing leaseholder %s as preferred replica for range %s", leaseholder, desc)
 		return *leaseholder, false, nil
 	}
 

@@ -1396,7 +1396,7 @@ func (dsp *DistSQLPlanner) partitionSpan(
 		desc := it.Desc()
 		if log.V(1) {
 			descCpy := desc // don't let desc escape
-			log.Infof(ctx, "lastKey: %s desc: %s", lastKey, &descCpy)
+			log.Infof(ctx, "lastKey: %s, desc: %s, replica: %s", lastKey, &descCpy, replDesc)
 		}
 
 		if !desc.ContainsKey(lastKey) {
