@@ -42,6 +42,7 @@ go_library(
         "cdc_bench.go",
         "cdc_filtering.go",
         "cdc_helper.go",
+        "cdc_multi_region.go",
         "cdc_stats.go",
         "chaos.go",
         "clearrange.go",

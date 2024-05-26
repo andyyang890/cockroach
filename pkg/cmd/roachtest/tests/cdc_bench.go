@@ -158,9 +158,9 @@ func formatSI(num int64) string {
 }
 
 // makeCDCBenchOptions creates common cluster options for CDC benchmarks.
-func makeCDCBenchOptions(c cluster.Cluster) (option.StartOpts, install.ClusterSettings) {
+func makeCDCBenchOptions(c cluster.Cluster, clusterSettingOpts ...install.ClusterSettingOption) (option.StartOpts, install.ClusterSettings) {
 	opts := option.DefaultStartOpts()
-	settings := install.MakeClusterSettings()
+	settings := install.MakeClusterSettings(clusterSettingOpts...)
 	settings.ClusterSettings["kv.rangefeed.enabled"] = "true"
 
 	// Disable the stuck watcher, since it can cause continual catchup scans when

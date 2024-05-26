@@ -684,7 +684,7 @@ func (cj *changefeedJob) waitForCompletion() {
 	}
 }
 
-func newCDCTester(ctx context.Context, t test.Test, c cluster.Cluster) cdcTester {
+func newCDCTester(ctx context.Context, t test.Test, c cluster.Cluster, opts ...install.ClusterSettingOption) cdcTester {
 	lastCrdbNode := c.Spec().NodeCount - 1
 	if lastCrdbNode == 0 {
 		lastCrdbNode = 1
@@ -708,7 +708,7 @@ func newCDCTester(ctx context.Context, t test.Test, c cluster.Cluster) cdcTester
 	}
 	tester.logger = changefeedLogger
 
-	startOpts, settings := makeCDCBenchOptions(c)
+	startOpts, settings := makeCDCBenchOptions(c, opts...)
 
 	// With a target_duration of 10s, we won't see slow span logs from changefeeds untils we are > 100s
 	// behind, which is well above the 60s targetSteadyLatency we have in some tests.
