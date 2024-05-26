@@ -56,7 +56,8 @@ func runCDCMultiRegionNullSink(ctx context.Context, t test.Test, c cluster.Clust
 	db := c.Conn(ctx, t.L(), 1)
 	for _, s := range []string{
 		`ALTER RANGE default CONFIGURE ZONE USING num_replicas = 5, constraints = '{+rack=0: 2, +rack=1: 2, +rack=2: 1}', lease_preferences = '[[+rack=0], [+rack=1], [+rack=2]]'`,
-		`SET CLUSTER SETTING changefeed.random_replica_selection.enabled = false`,
+		//`SET CLUSTER SETTING changefeed.random_replica_selection.enabled = false`,
+		`SET CLUSTER SETTING kv.rangefeed.enabled = true`,
 		`CREATE TABLE t (id PRIMARY KEY, data) AS SELECT generate_series(1, 1000000), gen_random_uuid()`,
 		`ALTER TABLE t SPLIT AT SELECT id FROM t ORDER BY random() LIMIT 100`,
 	} {
