@@ -59,6 +59,7 @@ func runCDCMultiRegionNullSink(ctx context.Context, t test.Test, c cluster.Clust
 		`ALTER RANGE default CONFIGURE ZONE USING num_replicas = 5, constraints = '{+rack=0: 2, +rack=1: 2, +rack=2: 1}', lease_preferences = '[[+rack=0], [+rack=1], [+rack=2]]'`,
 		//`SET CLUSTER SETTING changefeed.random_replica_selection.enabled = false`,
 		`SET CLUSTER SETTING kv.rangefeed.enabled = true`,
+		`SET CLUSTER SETTING kv.range_merge.queue_enabled = false`,
 	} {
 		if _, err := db.Exec(s); err != nil {
 			t.Fatal(err)
