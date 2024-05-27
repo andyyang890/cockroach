@@ -75,7 +75,7 @@ func runCDCMultiRegionNullSink(ctx context.Context, t test.Test, c cluster.Clust
 
 	for _, s := range []string{
 		`CREATE TABLE t (id PRIMARY KEY, data) AS SELECT generate_series(1, 1000000), gen_random_uuid()`,
-		`ALTER TABLE t SPLIT AT SELECT id FROM t ORDER BY random() LIMIT 100`,
+		`ALTER TABLE t SPLIT AT SELECT id FROM t ORDER BY random() LIMIT 1000`,
 	} {
 		if _, err := db.Exec(s); err != nil {
 			t.Fatal(err)
