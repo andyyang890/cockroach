@@ -1202,8 +1202,9 @@ func (s *sliMetrics) getLaggingRangesCallback() func(lagging int64, total int64)
 
 // Metrics are for production monitoring of changefeeds.
 type Metrics struct {
-	AggMetrics                     *AggMetrics
-	UsageMetrics                   *JobScopedUsageMetrics
+	AggMetrics   *AggMetrics
+	UsageMetrics *JobScopedUsageMetrics
+	// TODO rename to buffer metrics
 	KVFeedMetrics                  kvevent.Metrics
 	SchemaFeedMetrics              schemafeed.Metrics
 	Failures                       *metric.Counter

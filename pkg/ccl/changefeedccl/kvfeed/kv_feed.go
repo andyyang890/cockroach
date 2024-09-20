@@ -143,15 +143,18 @@ func Run(ctx context.Context, cfg Config) error {
 	// provided buffer.
 	var scErr schemaChangeDetectedError
 	isChangefeedCompleted := errors.Is(err, errChangefeedCompleted)
-	if !(isChangefeedCompleted || errors.As(err, &scErr)) {
+	if !isChangefeedCompleted && !errors.As(err, &scErr) {
+		log.Errorf(ctx, "stopping kv feed due to error: %s", err)
 		// Regardless of whether we exited KV feed with or without an error, that error
 		// is not a schema change; so, close the writer and return.
 		return errors.CombineErrors(err, f.writer.CloseWithReason(ctx, err))
 	}
 
 	if isChangefeedCompleted {
+		// TODO inc kvfeed exit completed
 		log.Info(ctx, "stopping kv feed: changefeed completed")
 	} else {
+		// TODO inc kvfeed exit schemachange
 		log.Infof(ctx, "stopping kv feed due to schema change at %v", scErr.ts)
 	}
 
@@ -259,6 +262,8 @@ type kvFeed struct {
 
 	targets changefeedbase.Targets
 
+	metrics *Metrics
+
 	// These dependencies are made available for test injection.
 	bufferFactory func() kvevent.Buffer
 	tableFeed     schemafeed.SchemaFeed
@@ -311,6 +316,8 @@ func newKVFeed(
 var errChangefeedCompleted = errors.New("changefeed completed")
 
 func (f *kvFeed) run(ctx context.Context) (err error) {
+	f.metrics.Runs.Inc(1)
+
 	emitResolved := func(ts hlc.Timestamp, boundary jobspb.ResolvedSpan_BoundaryType) error {
 		for _, sp := range f.spans {
 			if err := f.writer.Add(ctx, kvevent.NewBackfillResolvedEvent(sp, ts, boundary)); err != nil {
@@ -369,6 +376,7 @@ func (f *kvFeed) run(ctx context.Context) (err error) {
 			f.checkpointTimestamp = hlc.Timestamp{}
 		}
 
+		// TODO continue from here
 		highWater := rangeFeedResumeFrontier.Frontier()
 		boundaryType := jobspb.ResolvedSpan_BACKFILL
 		events, err := f.tableFeed.Peek(ctx, highWater.Next())
@@ -407,6 +415,11 @@ func (f *kvFeed) run(ctx context.Context) (err error) {
 		if boundaryType == jobspb.ResolvedSpan_RESTART || boundaryType == jobspb.ResolvedSpan_EXIT {
 			return schemaChangeDetectedError{highWater.Next()}
 		}
+
+		f.metrics.Restarts.Inc(1)
+		// TODO log if we are restarting
+		// TODO inc boundary type in general?
+		// TODO count number of kvfeed starts and exits
 	}
 }
 
@@ -498,15 +511,21 @@ func (f *kvFeed) scanIfShould(
 		return nil, hlc.Timestamp{}, err
 	}
 
-	// If we have initial checkpoint information specified, filter out
-	// spans which we no longer need to scan.
-	spansToBackfill := filterCheckpointSpans(spansToScan, f.checkpoint)
-
-	if (!isInitialScan && f.schemaChangePolicy == changefeedbase.OptSchemaChangePolicyNoBackfill) ||
-		len(spansToBackfill) == 0 {
+	if !isInitialScan && f.schemaChangePolicy == changefeedbase.OptSchemaChangePolicyNoBackfill {
+		f.metrics.SkippedScans.schemaChangeNoBackfill.Inc(1)
 		return spansToScan, scanTime, nil
 	}
 
+	// If we have initial checkpoint information specified, filter out
+	// spans which we no longer need to scan.
+	// TODO(yang): Should we also count the number of spans filtered out?
+	spansToBackfill := filterCheckpointSpans(spansToScan, f.checkpoint)
+	if len(spansToBackfill) == 0 {
+		f.metrics.SkippedScans.checkpointSufficient.Inc(1)
+		return spansToScan, scanTime, nil
+	}
+
+	f.metrics.Scans.Inc(1)
 	if f.onBackfillCallback != nil {
 		defer f.onBackfillCallback()()
 	}
