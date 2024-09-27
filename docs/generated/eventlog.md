@@ -45,11 +45,11 @@ An event of type `changefeed_emitted_bytes` is an event representing the bytes e
 
 | Field | Description | Sensitive |
 |--|--|--|
-| `Description` | The description of that would show up in the job's description field, redacted | yes |
+| `Description` | The description of what would show up in the job's description field (redacted). | yes |
 | `SinkType` | The type of sink being emitted to (ex: kafka, nodelocal, webhook-https). | no |
 | `NumTables` | The number of tables listed in the query that the changefeed is to run on. | no |
-| `Resolved` | The behavior of emitted resolved spans (ex: yes, no, 10s) | no |
-| `InitialScan` | The desired behavior of initial scans (ex: yes, no, only) | no |
+| `Resolved` | The behavior of emitted resolved spans (ex: yes, no, 10s). | no |
+| `InitialScan` | The desired behavior of initial scans (ex: yes, no, only). | no |
 | `Format` | The data format being emitted (ex: JSON, Avro). | no |
 | `JobId` | The job id for enterprise changefeeds. | no |
 
@@ -61,18 +61,42 @@ was triggered.
 
 | Field | Description | Sensitive |
 |--|--|--|
-| `FailureType` | The reason / environment with which the changefeed failed (ex: connection_closed, changefeed_behind). | no |
+| `FailureType` | The reason/environment with which the changefeed failed (ex: connection_closed, changefeed_behind). | no |
 
 
 #### Common fields
 
 | Field | Description | Sensitive |
 |--|--|--|
-| `Description` | The description of that would show up in the job's description field, redacted | yes |
+| `Description` | The description of what would show up in the job's description field (redacted). | yes |
 | `SinkType` | The type of sink being emitted to (ex: kafka, nodelocal, webhook-https). | no |
 | `NumTables` | The number of tables listed in the query that the changefeed is to run on. | no |
-| `Resolved` | The behavior of emitted resolved spans (ex: yes, no, 10s) | no |
-| `InitialScan` | The desired behavior of initial scans (ex: yes, no, only) | no |
+| `Resolved` | The behavior of emitted resolved spans (ex: yes, no, 10s). | no |
+| `InitialScan` | The desired behavior of initial scans (ex: yes, no, only). | no |
+| `Format` | The data format being emitted (ex: JSON, Avro). | no |
+| `JobId` | The job id for enterprise changefeeds. | no |
+
+### `changefeed_metrics`
+
+An event of type `changefeed_metrics` is an event logging the changefeed metrics for a specific
+metrics label. It will only be recorded for changefeeds that have defined a
+metrics_label that are lagging.
+
+
+| Field | Description | Sensitive |
+|--|--|--|
+| `MetricsLabel` | Metrics label of the changefeed. TODO should this go in common changefeed event details? | no |
+
+
+#### Common fields
+
+| Field | Description | Sensitive |
+|--|--|--|
+| `Description` | The description of what would show up in the job's description field (redacted). | yes |
+| `SinkType` | The type of sink being emitted to (ex: kafka, nodelocal, webhook-https). | no |
+| `NumTables` | The number of tables listed in the query that the changefeed is to run on. | no |
+| `Resolved` | The behavior of emitted resolved spans (ex: yes, no, 10s). | no |
+| `InitialScan` | The desired behavior of initial scans (ex: yes, no, only). | no |
 | `Format` | The data format being emitted (ex: JSON, Avro). | no |
 | `JobId` | The job id for enterprise changefeeds. | no |
 
@@ -92,11 +116,11 @@ ChangefeedFailed events.
 
 | Field | Description | Sensitive |
 |--|--|--|
-| `Description` | The description of that would show up in the job's description field, redacted | yes |
+| `Description` | The description of what would show up in the job's description field (redacted). | yes |
 | `SinkType` | The type of sink being emitted to (ex: kafka, nodelocal, webhook-https). | no |
 | `NumTables` | The number of tables listed in the query that the changefeed is to run on. | no |
-| `Resolved` | The behavior of emitted resolved spans (ex: yes, no, 10s) | no |
-| `InitialScan` | The desired behavior of initial scans (ex: yes, no, only) | no |
+| `Resolved` | The behavior of emitted resolved spans (ex: yes, no, 10s). | no |
+| `InitialScan` | The desired behavior of initial scans (ex: yes, no, only). | no |
 | `Format` | The data format being emitted (ex: JSON, Avro). | no |
 | `JobId` | The job id for enterprise changefeeds. | no |
 
