@@ -1423,6 +1423,13 @@ func registerCDC(r registry.Registry) {
 			ct := newCDCTester(ctx, t, c)
 			defer ct.Close()
 
+			if _, err := ct.DB().Exec("SET CLUSTER SETTING changefeed.frontier_highwater_lag_checkpoint_threshold = '5s';"); err != nil {
+				ct.t.Fatal(err)
+			}
+			if _, err := ct.DB().Exec("SET CLUSTER SETTING changefeed.frontier_checkpoint_frequency = '1s';"); err != nil {
+				ct.t.Fatal(err)
+			}
+
 			ct.runTPCCWorkload(tpccArgs{warehouses: 1000, duration: "120m"})
 
 			feed := ct.newChangefeed(feedArgs{
