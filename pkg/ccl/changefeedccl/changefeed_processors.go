@@ -1670,9 +1670,9 @@ func (cf *changeFrontier) maybeCheckpointJob(
 	hasLaggingSpans := cf.frontier.hasLaggingSpans(cf.spec.Feed.StatementTime, &cf.js.settings.SV)
 	canCheckpoint := cf.js.canCheckpointSpans()
 	updateCheckpoint := (inBackfill || hasLaggingSpans) && canCheckpoint
-	log.Infof(cf.Ctx(),
-		"maybeCheckpointJob: inBackfill=%t, hasLaggingSpans=%t, canCheckpoint=%t, updateCheckpoint=%t",
-		inBackfill, hasLaggingSpans, canCheckpoint, updateCheckpoint)
+	//log.Infof(cf.Ctx(),
+	//	"maybeCheckpointJob: inBackfill=%t, hasLaggingSpans=%t, canCheckpoint=%t, updateCheckpoint=%t",
+	//	inBackfill, hasLaggingSpans, canCheckpoint, updateCheckpoint)
 
 	// If the highwater has moved an empty checkpoint will be saved
 	var checkpoint jobspb.ChangefeedProgress_Checkpoint
@@ -2034,13 +2034,15 @@ func getCheckpointSpans(
 	if nowNanos < frontierNanos {
 		panic(fmt.Sprintf("now time %d is earlier than frontier %d, possible error with units", nowNanos, frontierNanos))
 	}
-	var sumCheckpointDuplicatePercent float64
+	var sumPreventedDuplicatesPercent float64
+	duplicatesTimeSpan := float64(nowNanos - frontierNanos)
 	forEachSpan(func(s roachpb.Span, ts hlc.Timestamp) span.OpResult {
 		numSpans += 1
 		if frontier.Less(ts) {
 			// Simplifying assumption: All aggregators are caught up to current time.
-			checkpointDuplicatePercent := float64(ts.WallTime-frontierNanos) / float64(nowNanos-frontierNanos)
-			sumCheckpointDuplicatePercent += checkpointDuplicatePercent
+			preventedDuplicatesByCheckpointTimeSpan := float64(ts.WallTime - frontierNanos)
+			preventedDuplicatesPercent := preventedDuplicatesByCheckpointTimeSpan / duplicatesTimeSpan
+			sumPreventedDuplicatesPercent += preventedDuplicatesPercent
 			checkpointSpanGroup.Add(s)
 			if checkpointFrontier.IsEmpty() || ts.Less(checkpointFrontier) {
 				checkpointFrontier = ts
@@ -2048,8 +2050,10 @@ func getCheckpointSpans(
 		}
 		return span.ContinueMatch
 	})
-	avgCheckpointDuplicatePercent := sumCheckpointDuplicatePercent / float64(numSpans)
-	log.Infof(context.TODO(), "getCheckpointSpans: average reduction in duplicates per span: %f%%", avgCheckpointDuplicatePercent*100)
+	avgCheckpointDuplicatePercent := sumPreventedDuplicatesPercent / float64(numSpans)
+	log.Infof(context.TODO(),
+		"getCheckpointSpans: average reduction of %f%% (%fs) in duplicates for a lag of %fs",
+		avgCheckpointDuplicatePercent*100, avgCheckpointDuplicatePercent*duplicatesTimeSpan/1e9, duplicatesTimeSpan/1e9)
 
 	// Ensure we only return up to maxBytes spans
 	var checkpointSpans []roachpb.Span
