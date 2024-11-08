@@ -76,11 +76,10 @@ was triggered.
 | `Format` | The data format being emitted (ex: JSON, Avro). | no |
 | `JobId` | The job id for enterprise changefeeds. | no |
 
-### `changefeed_metrics`
+### `changefeed_labeled_metrics`
 
-An event of type `changefeed_metrics` is an event logging the changefeed metrics for a specific
-metrics label. It will only be recorded for changefeeds that have defined a
-metrics_label that are lagging.
+An event of type `changefeed_labeled_metrics` is an event logging the changefeed metrics for a
+specific metrics label before they are aggregated into the overall metric.
 
 
 | Field | Description | Sensitive |

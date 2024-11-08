@@ -17,12 +17,14 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/timers"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/multitenant"
+	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/catpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgcode"
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/util/cidr"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
+	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/metric/aggmetric"
@@ -132,6 +134,8 @@ func (a *AggMetrics) MetricStruct() {}
 
 // sliMetrics holds all SLI related metrics aggregated into AggMetrics.
 type sliMetrics struct {
+	scope string
+
 	EmittedRowMessages          *aggmetric.Counter
 	EmittedResolvedMessages     *aggmetric.Counter
 	EmittedBatchSizes           *aggmetric.Histogram
@@ -1128,6 +1132,7 @@ func (a *AggMetrics) getOrCreateScope(scope string) (*sliMetrics, error) {
 	}
 
 	sm := &sliMetrics{
+		scope:                       scope,
 		EmittedRowMessages:          a.EmittedMessages.AddChild(scope, "row"),
 		EmittedResolvedMessages:     a.EmittedMessages.AddChild(scope, "resolved"),
 		EmittedBatchSizes:           a.EmittedBatchSizes.AddChild(scope),
@@ -1354,4 +1359,31 @@ func MakeMemoryMetrics(
 func init() {
 	jobs.MakeChangefeedMetricsHook = MakeMetrics
 	jobs.MakeChangefeedMemoryMetricsHook = MakeMemoryMetrics
+}
+
+var labeledMetricsStructuredEventEnabled = settings.RegisterBoolSetting(
+	settings.ApplicationLevel,
+	"changefeed.log.structured_event.labeled_metrics.enabled",
+	"whether changefeeds should emit labeled_metrics events",
+	false,
+)
+
+var labeledMetricsStructuredEventLagInterval = settings.RegisterDurationSetting(
+	settings.ApplicationLevel,
+	"changefeed.log.structured_event.labeled_metrics.lag_interval",
+	"the amount of time a changefeed needs to lag before it starts logging labeled_metrics events",
+	10*time.Minute,
+	settings.DurationInRange(0, 24*time.Hour),
+)
+
+var labeledMetricsStructuredEventFrequency = settings.RegisterDurationSetting(
+	settings.ApplicationLevel,
+	"changefeed.log.structured_event.labeled_metrics.frequency",
+	"the frequency at which labeled_metrics events will be emitted",
+	5*time.Minute,
+	settings.DurationInRange(1*time.Minute, 60*time.Minute),
+)
+
+func (m *sliMetrics) asStructuredEvent() *eventpb.ChangefeedLabeledMetrics {
+	return nil
 }

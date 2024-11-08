@@ -54,10 +54,9 @@ message ChangefeedEmittedBytes {
   bool closing = 5 [(gogoproto.jsontag) = ",omitempty", (gogoproto.moretags) = "redact:\"nonsensitive\""];
 }
 
-// ChangefeedMetrics is an event logging the changefeed metrics for a specific
-// metrics label. It will only be recorded for changefeeds that have defined a
-// metrics_label that are lagging.
-message ChangefeedMetrics {
+// ChangefeedLabeledMetrics is an event logging the changefeed metrics for a
+// specific metrics label before they are aggregated into the overall metric.
+message ChangefeedLabeledMetrics {
   CommonChangefeedEventDetails common = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "", (gogoproto.embed) = true];
 
   // Metrics label of the changefeed. TODO should this go in common changefeed event details?
