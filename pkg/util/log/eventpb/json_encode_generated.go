@@ -1038,7 +1038,7 @@ func (m *ChangefeedFailed) AppendJSONFields(printComma bool, b redact.Redactable
 }
 
 // AppendJSONFields implements the EventPayload interface.
-func (m *ChangefeedMetrics) AppendJSONFields(printComma bool, b redact.RedactableBytes) (bool, redact.RedactableBytes) {
+func (m *ChangefeedLabeledMetrics) AppendJSONFields(printComma bool, b redact.RedactableBytes) (bool, redact.RedactableBytes) {
 
 	printComma, b = m.CommonChangefeedEventDetails.AppendJSONFields(printComma, b)
 

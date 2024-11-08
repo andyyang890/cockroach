@@ -11,7 +11,7 @@ func (m *ChangefeedEmittedBytes) LoggingChannel() logpb.Channel { return logpb.C
 func (m *ChangefeedFailed) LoggingChannel() logpb.Channel { return logpb.Channel_TELEMETRY }
 
 // LoggingChannel implements the EventPayload interface.
-func (m *ChangefeedMetrics) LoggingChannel() logpb.Channel { return logpb.Channel_TELEMETRY }
+func (m *ChangefeedLabeledMetrics) LoggingChannel() logpb.Channel { return logpb.Channel_TELEMETRY }
 
 // LoggingChannel implements the EventPayload interface.
 func (m *CreateChangefeed) LoggingChannel() logpb.Channel { return logpb.Channel_TELEMETRY }
