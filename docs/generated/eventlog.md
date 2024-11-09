@@ -80,11 +80,16 @@ was triggered.
 
 An event of type `changefeed_labeled_metrics` is an event logging the changefeed metrics for a
 specific metrics label before they are aggregated into the overall metric.
+They are configured with the `changefeed.log.structured_event.labeled_metrics.*`
+cluster settings.
 
 
 | Field | Description | Sensitive |
 |--|--|--|
-| `MetricsLabel` | Metrics label of the changefeed. TODO should this go in common changefeed event details? | no |
+| `MetricsLabel` | Metrics label of the changefeed. TODO should this go in common changefeed event details? | yes |
+| `AggregatorProgress` |  | no |
+| `CheckpointProgress` |  | no |
+| `Progress` |  | no |
 
 
 #### Common fields
