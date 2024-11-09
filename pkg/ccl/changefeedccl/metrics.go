@@ -1197,7 +1197,7 @@ func (a *AggMetrics) getOrCreateScope(scope string) (*sliMetrics, error) {
 // getLaggingRangesCallback returns a function which can be called to update the
 // lagging ranges metric. It should be called with the current number of lagging
 // ranges.
-func (s *sliMetrics) getLaggingRangesCallback() func(lagging int64, total int64) {
+func (m *sliMetrics) getLaggingRangesCallback() func(lagging int64, total int64) {
 	// Because this gauge is shared between changefeeds in the same metrics scope,
 	// we must instead modify it using `Inc` and `Dec` (as opposed to `Update`) to
 	// ensure values written by others are not overwritten. The code below is used
@@ -1221,10 +1221,10 @@ func (s *sliMetrics) getLaggingRangesCallback() func(lagging int64, total int64)
 		last.Lock()
 		defer last.Unlock()
 
-		s.LaggingRanges.Dec(last.lagging - lagging)
+		m.LaggingRanges.Dec(last.lagging - lagging)
 		last.lagging = lagging
 
-		s.TotalRanges.Dec(last.total - total)
+		m.TotalRanges.Dec(last.total - total)
 		last.total = total
 	}
 }
