@@ -1048,8 +1048,37 @@ func (m *ChangefeedLabeledMetrics) AppendJSONFields(printComma bool, b redact.Re
 		}
 		printComma = true
 		b = append(b, "\"MetricsLabel\":\""...)
-		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(m.MetricsLabel)))
+		b = append(b, redact.StartMarker()...)
+		b = redact.RedactableBytes(jsonbytes.EncodeString([]byte(b), string(redact.EscapeMarkers([]byte(m.MetricsLabel)))))
+		b = append(b, redact.EndMarker()...)
 		b = append(b, '"')
+	}
+
+	if m.AggregatorProgress != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"AggregatorProgress\":"...)
+		b = strconv.AppendInt(b, int64(m.AggregatorProgress), 10)
+	}
+
+	if m.CheckpointProgress != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"CheckpointProgress\":"...)
+		b = strconv.AppendInt(b, int64(m.CheckpointProgress), 10)
+	}
+
+	if m.Progress != 0 {
+		if printComma {
+			b = append(b, ',')
+		}
+		printComma = true
+		b = append(b, "\"Progress\":"...)
+		b = strconv.AppendInt(b, int64(m.Progress), 10)
 	}
 
 	return printComma, b

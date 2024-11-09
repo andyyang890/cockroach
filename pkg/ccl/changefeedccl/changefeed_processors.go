@@ -104,8 +104,10 @@ type changeAggregator struct {
 	metrics                *Metrics
 	sliMetrics             *sliMetrics
 	sliMetricsID           int64
+	labeledMetricsLogger   *labeledMetricsLogger
 	closeTelemetryRecorder func()
-	knobs                  TestingKnobs
+
+	knobs TestingKnobs
 }
 
 type timestampLowerBoundOracle interface {
@@ -336,6 +338,7 @@ func (ca *changeAggregator) Start(ctx context.Context) {
 		return
 	}
 	ca.sliMetricsID = ca.sliMetrics.claimId()
+	ca.labeledMetricsLogger = newLabeledMetricsPeriodicLogger(timeutil.DefaultTimeSource{}, ca.FlowCtx.Cfg.Settings, ca.sliMetrics)
 
 	// TODO(jayant): add support for sinkless changefeeds using UUID
 	recorder := metricsRecorder(ca.sliMetrics)
@@ -688,6 +691,8 @@ func (ca *changeAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMet
 	}
 
 	for ca.State == execinfra.StateRunning {
+		ca.labeledMetricsLogger.maybeLogLabeledMetrics(ca.Ctx(), ca.frontier.Frontier().GoTime())
+
 		if !ca.changedRowBuf.IsEmpty() {
 			ca.lastPush = timeutil.Now()
 			return ca.ProcessRowHelper(ca.changedRowBuf.Pop()), nil
@@ -1017,6 +1022,8 @@ type changeFrontier struct {
 	metricsID    int
 	sliMetricsID int64
 
+	labeledMetricsLogger *labeledMetricsLogger
+
 	knobs TestingKnobs
 
 	usageWg       sync.WaitGroup
@@ -1273,6 +1280,7 @@ func (cf *changeFrontier) Start(ctx context.Context) {
 		return
 	}
 	cf.sliMetrics = sli
+	cf.labeledMetricsLogger = newLabeledMetricsPeriodicLogger(timeutil.DefaultTimeSource{}, cf.FlowCtx.Cfg.Settings, cf.sliMetrics)
 
 	cf.sink, err = getResolvedTimestampSink(ctx, cf.FlowCtx.Cfg, cf.spec.Feed, nilOracle,
 		cf.spec.User(), cf.spec.JobID, sli)
@@ -1477,6 +1485,8 @@ func (cf *changeFrontier) closeMetrics() {
 // Next is part of the RowSource interface.
 func (cf *changeFrontier) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
 	for cf.State == execinfra.StateRunning {
+		cf.labeledMetricsLogger.maybeLogLabeledMetrics(cf.Ctx(), cf.frontier.Frontier().GoTime())
+
 		if !cf.passthroughBuf.IsEmpty() {
 			return cf.ProcessRowHelper(cf.passthroughBuf.Pop()), nil
 		} else if !cf.resolvedBuf.IsEmpty() {

@@ -24,8 +24,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/pgwire/pgerror"
 	"github.com/cockroachdb/cockroach/pkg/util/cidr"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
+	"github.com/cockroachdb/cockroach/pkg/util/log/severity"
 	"github.com/cockroachdb/cockroach/pkg/util/metric"
 	"github.com/cockroachdb/cockroach/pkg/util/metric/aggmetric"
 	"github.com/cockroachdb/cockroach/pkg/util/syncutil"
@@ -1384,6 +1386,48 @@ var labeledMetricsStructuredEventFrequency = settings.RegisterDurationSetting(
 	settings.DurationInRange(1*time.Minute, 60*time.Minute),
 )
 
-func (m *sliMetrics) asStructuredEvent() *eventpb.ChangefeedLabeledMetrics {
-	return nil
+// TODO move into a new structured_log.go file?
+type labeledMetricsLogger struct {
+	clock    timeutil.TimeSource
+	nextLog  time.Time
+	settings *cluster.Settings
+	metrics  *sliMetrics
+}
+
+func newLabeledMetricsPeriodicLogger(
+	clock timeutil.TimeSource, settings *cluster.Settings, metrics *sliMetrics,
+) *labeledMetricsLogger {
+	return &labeledMetricsLogger{
+		clock:    clock,
+		settings: settings,
+		metrics:  metrics,
+	}
+}
+
+// TODO is there a way to test that we're logging events
+// TODO we could at least test that nextLog is incrementing
+func (l *labeledMetricsLogger) maybeLogLabeledMetrics(ctx context.Context, progress time.Time) {
+	if !labeledMetricsStructuredEventEnabled.Get(&l.settings.SV) {
+		l.nextLog = time.Time{}
+		return
+	}
+
+	now := l.clock.Now()
+	if now.Before(l.nextLog) {
+		return
+	}
+	logThreshold := now.Add(-labeledMetricsStructuredEventLagInterval.Get(&l.settings.SV))
+	if progress.After(logThreshold) {
+		return
+	}
+
+	// TODO populate the common fields
+	labeledMetrics := &eventpb.ChangefeedLabeledMetrics{
+		CommonChangefeedEventDetails: eventpb.CommonChangefeedEventDetails{},
+		MetricsLabel:                 l.metrics.scope,
+		AggregatorProgress:           l.metrics.AggregatorProgress.Value(),
+		CheckpointProgress:           l.metrics.CheckpointProgress.Value(),
+	}
+	log.StructuredEvent(ctx, severity.INFO, labeledMetrics)
+	l.nextLog = now.Add(labeledMetricsStructuredEventFrequency.Get(&l.settings.SV))
 }

@@ -56,9 +56,17 @@ message ChangefeedEmittedBytes {
 
 // ChangefeedLabeledMetrics is an event logging the changefeed metrics for a
 // specific metrics label before they are aggregated into the overall metric.
+// They are configured with the `changefeed.log.structured_event.labeled_metrics.*`
+// cluster settings.
 message ChangefeedLabeledMetrics {
   CommonChangefeedEventDetails common = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "", (gogoproto.embed) = true];
 
-  // Metrics label of the changefeed. TODO should this go in common changefeed event details?
-  string metrics_label = 2 [(gogoproto.jsontag) = ",omitempty", (gogoproto.moretags) = "redact:\"nonsensitive\""];
+  // Metrics label of the changefeed (redacted). TODO should this go in common changefeed event details?
+  string metrics_label = 2 [(gogoproto.jsontag) = ",omitempty"];
+
+  int64 aggregator_progress = 3 [(gogoproto.jsontag) = ",omitempty"];
+
+  int64 checkpoint_progress = 4 [(gogoproto.jsontag) = ",omitempty"];
+
+  int64 progress = 99 [(gogoproto.jsontag) = ",omitempty"];
 }
