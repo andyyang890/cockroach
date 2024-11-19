@@ -55,6 +55,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/tracing"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
+	"github.com/cockroachdb/logtags"
 	"github.com/cockroachdb/redact"
 )
 
@@ -129,7 +130,7 @@ func changefeedTypeCheck(
 	return true, withSinkHeader, nil
 }
 
-// changefeedPlanHook implements sql.PlanHookFn.
+// changefeedPlanHook implements sql.planHookFn.
 func changefeedPlanHook(
 	ctx context.Context, stmt tree.Statement, p sql.PlanHookState,
 ) (sql.PlanHookRowFn, colinfo.ResultColumns, []sql.PlanNode, bool, error) {
@@ -139,10 +140,22 @@ func changefeedPlanHook(
 	}
 
 	exprEval := p.ExprEvaluator("CREATE CHANGEFEED")
-	var sinkURI string
+	rawOpts, err := exprEval.KVOptions(
+		ctx, changefeedStmt.Options, changefeedvalidators.CreateOptionValidations,
+	)
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	opts := changefeedbase.MakeStatementOptions(rawOpts)
+	st, err := opts.GetInitialScanType()
+	if err != nil {
+		return nil, nil, nil, false, err
+	}
+	if err := validateSettings(ctx, st != changefeedbase.OnlyInitialScan, p.ExecCfg()); err != nil {
+		return nil, nil, nil, false, err
+	}
+
 	unspecifiedSink := changefeedStmt.SinkURI == nil
-	avoidBuffering := unspecifiedSink
-	var header colinfo.ResultColumns
 	if unspecifiedSink {
 		// An unspecified sink triggers a fairly radical change in behavior.
 		// Instead of setting up a system.job to emit to a sink in the
@@ -151,41 +164,136 @@ func changefeedPlanHook(
 		// over pgwire. The types of these rows are `(topic STRING, key BYTES,
 		// value BYTES)` and they correspond exactly to what would be emitted to
 		// a sink.
-		avoidBuffering = true
-		header = sinklessHeader
-	} else {
-		var err error
-		sinkURI, err = exprEval.String(ctx, changefeedStmt.SinkURI)
-		if err != nil {
-			return nil, nil, nil, false, changefeedbase.MarkTaggedError(err, changefeedbase.UserInput)
-		}
-		header = withSinkHeader
+		return sinklessChangefeedPlanHookRowFn(changefeedStmt, opts, p), sinklessHeader, nil, true /* avoidBuffering */, nil
 	}
 
-	rawOpts, err := exprEval.KVOptions(
-		ctx, changefeedStmt.Options, changefeedvalidators.CreateOptionValidations,
-	)
+	sinkURI, err := exprEval.String(ctx, changefeedStmt.SinkURI)
 	if err != nil {
 		return nil, nil, nil, false, err
 	}
+	if sinkURI == `` {
+		// Error if someone specifies an INTO with the empty string.
+		return nil, nil, nil, false, errors.New(`omit the SINK clause for inline results`)
+	}
+	return sinkChangefeedPlanHookRowFn(sinkURI, changefeedStmt, opts, p), withSinkHeader, nil, false /* avoidBuffering */, nil
+}
 
-	// rowFn impements sql.PlanHookRowFn
+func sinklessChangefeedPlanHookRowFn(
+	changefeedStmt *annotatedChangefeedStatement,
+	opts changefeedbase.StatementOptions,
+	p sql.PlanHookState,
+) sql.PlanHookRowFn {
+	return func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
+		ctx, sp := tracing.ChildSpan(ctx, changefeedStmt.StatementTag())
+		defer sp.Finish()
+
+		jr, err := createChangefeedJobRecord(
+			ctx,
+			p,
+			changefeedStmt,
+			``, /* sinkURI */
+			opts,
+			jobspb.InvalidJobID,
+			`changefeed.create`,
+		)
+		if err != nil {
+			return changefeedbase.MarkTaggedError(err, changefeedbase.UserInput)
+		}
+
+		details := jr.Details.(jobspb.ChangefeedDetails)
+		progress := jobspb.Progress{
+			Progress: &jobspb.Progress_HighWater{},
+			Details: &jobspb.Progress_Changefeed{
+				Changefeed: &jobspb.ChangefeedProgress{},
+			},
+		}
+
+		// If this is a sinkless changefeed, then we should not hold on to the
+		// descriptor leases accessed to plan the changefeed. If changes happen
+		// to descriptors, they will be addressed during the execution.
+		// Failing to release the leases would result in preventing any schema
+		// changes on the relevant descriptors (including, potentially,
+		// system.role_membership, if the privileges to access the table were
+		// granted via an inherited role).
+		p.ExtendedEvalContext().Descs.ReleaseAll(ctx)
+
+		telemetry.Count(`changefeed.create.core`)
+		// TODO the ctx needs to have the identifier already too or enough to just have another common field
+		logChangefeedCreateTelemetry(ctx, jr, changefeedStmt.Select != nil)
+
+		description := jr.Description
+		err = coreChangefeed(ctx, p, details, description, progress, resultsCh)
+		// TODO(yevgeniy): This seems wrong -- core changefeeds always terminate
+		// with an error.  Perhaps rename this telemetry to indicate number of
+		// completed feeds.
+		telemetry.Count(`changefeed.core.error`)
+		logChangefeedFailedTelemetry2(ctx, details, description, 0 /* jobID */, failureTypeForStartupError(err))
+		return err
+	}
+}
+
+func coreChangefeed(
+	ctx context.Context,
+	p sql.PlanHookState,
+	details jobspb.ChangefeedDetails,
+	description string,
+	progress jobspb.Progress,
+	resultsCh chan<- tree.Datums,
+) error {
+	ctx = logtags.AddTag(ctx, "session", p.ExtendedEvalContext().SessionID)
+
+	localState := &cachedState{progress: progress}
+	p.ExtendedEvalContext().ChangefeedState = localState
+	knobs, _ := p.ExecCfg().DistSQLSrv.TestingKnobs.Changefeed.(*TestingKnobs)
+
+	for r := getRetry(ctx); ; {
+		if !r.Next() {
+			// Retry loop exits when context is canceled.
+			log.Infof(ctx, "core changefeed retry loop exiting: %s", ctx.Err())
+			return ctx.Err()
+		}
+
+		if knobs != nil && knobs.BeforeDistChangefeed != nil {
+			knobs.BeforeDistChangefeed()
+		}
+
+		err := distChangefeedFlow(ctx, p, 0 /* jobID */, details, description, localState, resultsCh)
+		if err == nil {
+			log.Infof(ctx, "core changefeed completed with no error")
+			return nil
+		}
+
+		if knobs != nil && knobs.HandleDistChangefeedError != nil {
+			err = knobs.HandleDistChangefeedError(err)
+		}
+
+		if err := changefeedbase.AsTerminalError(ctx, p.ExecCfg().LeaseManager, err); err != nil {
+			log.Infof(ctx, "core changefeed failed due to error: %s", err)
+			return err
+		}
+
+		// All other errors retry; but we'll use an up-to-date progress
+		// information which is saved in the localState.
+		log.Infof(ctx, "core changefeed retrying due to transient error: %s", err)
+	}
+}
+
+func sinkChangefeedPlanHookRowFn(
+	sinkURI string,
+	changefeedStmt *annotatedChangefeedStatement,
+	opts changefeedbase.StatementOptions,
+	p sql.PlanHookState,
+) sql.PlanHookRowFn {
 	rowFn := func(ctx context.Context, _ []sql.PlanNode, resultsCh chan<- tree.Datums) error {
-		ctx, span := tracing.ChildSpan(ctx, stmt.StatementTag())
+		ctx, span := tracing.ChildSpan(ctx, changefeedStmt.StatementTag())
 		defer span.Finish()
-		opts := changefeedbase.MakeStatementOptions(rawOpts)
+
 		st, err := opts.GetInitialScanType()
 		if err != nil {
 			return err
 		}
 		if err := validateSettings(ctx, st != changefeedbase.OnlyInitialScan, p.ExecCfg()); err != nil {
 			return err
-		}
-
-		if !unspecifiedSink && sinkURI == `` {
-			// Error if someone specifies an INTO with the empty string. We've
-			// already sent the wrong result column headers.
-			return errors.New(`omit the SINK clause for inline results`)
 		}
 
 		jr, err := createChangefeedJobRecord(
@@ -207,27 +315,6 @@ func changefeedPlanHook(
 			Details: &jobspb.Progress_Changefeed{
 				Changefeed: &jobspb.ChangefeedProgress{},
 			},
-		}
-
-		if details.SinkURI == `` {
-			// If this is a sinkless changefeed, then we should not hold on to the
-			// descriptor leases accessed to plan the changefeed. If changes happen
-			// to descriptors, they will be addressed during the execution.
-			// Failing to release the leases would result in preventing any schema
-			// changes on the relevant descriptors (including, potentially,
-			// system.role_membership, if the privileges to access the table were
-			// granted via an inherited role).
-			p.ExtendedEvalContext().Descs.ReleaseAll(ctx)
-
-			telemetry.Count(`changefeed.create.core`)
-			logChangefeedCreateTelemetry(ctx, jr, changefeedStmt.Select != nil)
-
-			err := coreChangefeed(ctx, p, details, jr.Description, progress, resultsCh)
-			// TODO(yevgeniy): This seems wrong -- core changefeeds always terminate
-			// with an error.  Perhaps rename this telemetry to indicate number of
-			// completed feeds.
-			telemetry.Count(`changefeed.core.error`)
-			return err
 		}
 
 		// The below block creates the job and protects the data required for the
@@ -325,51 +412,9 @@ func changefeedPlanHook(
 		}
 		return err
 	}
-	return rowFnLogErrors, header, nil, avoidBuffering, nil
-}
 
-func coreChangefeed(
-	ctx context.Context,
-	p sql.PlanHookState,
-	details jobspb.ChangefeedDetails,
-	description string,
-	progress jobspb.Progress,
-	resultsCh chan<- tree.Datums,
-) error {
-	localState := &cachedState{progress: progress}
-	p.ExtendedEvalContext().ChangefeedState = localState
-	knobs, _ := p.ExecCfg().DistSQLSrv.TestingKnobs.Changefeed.(*TestingKnobs)
-
-	for r := getRetry(ctx); ; {
-		if !r.Next() {
-			// Retry loop exits when context is canceled.
-			log.Infof(ctx, "core changefeed retry loop exiting: %s", ctx.Err())
-			return ctx.Err()
-		}
-
-		if knobs != nil && knobs.BeforeDistChangefeed != nil {
-			knobs.BeforeDistChangefeed()
-		}
-
-		err := distChangefeedFlow(ctx, p, 0 /* jobID */, details, description, localState, resultsCh)
-		if err == nil {
-			log.Infof(ctx, "core changefeed completed with no error")
-			return nil
-		}
-
-		if knobs != nil && knobs.HandleDistChangefeedError != nil {
-			err = knobs.HandleDistChangefeedError(err)
-		}
-
-		if err := changefeedbase.AsTerminalError(ctx, p.ExecCfg().LeaseManager, err); err != nil {
-			log.Infof(ctx, "core changefeed failed due to error: %s", err)
-			return err
-		}
-
-		// All other errors retry; but we'll use an up-to-date progress
-		// information which is saved in the localState.
-		log.Infof(ctx, "core changefeed retrying due to transient error: %s", err)
-	}
+	// ) (fn PlanHookRowFn, header colinfo.ResultColumns, subplans []planNode, avoidBuffering bool, err error)
+	return rowFnLogErrors
 }
 
 func createChangefeedJobRecord(
@@ -1558,6 +1603,23 @@ func logChangefeedFailedTelemetry(
 		changefeedDetails := job.Details().(jobspb.ChangefeedDetails)
 		changefeedEventDetails = makeCommonChangefeedEventDetails(ctx, changefeedDetails, job.Payload().Description, job.ID())
 	}
+
+	changefeedFailedEvent := &eventpb.ChangefeedFailed{
+		CommonChangefeedEventDetails: changefeedEventDetails,
+		FailureType:                  failureType,
+	}
+
+	log.StructuredEvent(ctx, severity.INFO, changefeedFailedEvent)
+}
+
+func logChangefeedFailedTelemetry2(
+	ctx context.Context,
+	details jobspb.ChangefeedDetails,
+	description string,
+	jobID jobspb.JobID,
+	failureType changefeedbase.FailureType,
+) {
+	changefeedEventDetails := makeCommonChangefeedEventDetails(ctx, details, description, jobID)
 
 	changefeedFailedEvent := &eventpb.ChangefeedFailed{
 		CommonChangefeedEventDetails: changefeedEventDetails,

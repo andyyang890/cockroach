@@ -30,7 +30,7 @@ message CreateChangefeed {
 message ChangefeedFailed {
   CommonChangefeedEventDetails common = 1 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "", (gogoproto.embed) = true];
 
-  // The reason / environment with which the changefeed failed
+  // The reason/environment with which the changefeed failed
   // (ex: connection_closed, changefeed_behind).
   string failure_type = 2 [(gogoproto.jsontag) = ",omitempty", (gogoproto.moretags) = "redact:\"nonsensitive\""];
 }
