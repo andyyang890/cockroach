@@ -1356,6 +1356,39 @@ func runCDCKafkaAuth(ctx context.Context, t test.Test, c cluster.Cluster) {
 	}
 }
 
+func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Cluster) {
+	c.Start(ctx, t.L(), option.DefaultStartOpts(), install.MakeClusterSettings())
+
+	db := c.Conn(ctx, t.L(), 1)
+	sqlDB := sqlutils.MakeSQLRunner(db)
+
+	sqlDB.Exec(t, "SET CLUSTER SETTING kv.rangefeed.enabled = true")
+
+	tableNames := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	for _, tableName := range tableNames {
+		createStmt := fmt.Sprintf(`CREATE TABLE %s (
+	id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+	col1 TIMESTAMP(6) NULL,
+	col2 TIMESTAMP(6) NULL
+)`, tableName)
+		sqlDB.Exec(t, createStmt)
+	}
+
+	var jobID int
+	sqlDB.QueryRow(t,
+		fmt.Sprintf("CREATE CHANGEFEED FOR %s INTO 'null://' WITH on_error = 'pause'",
+			strings.Join(tableNames, ", ")),
+	).Scan(&jobID)
+
+	alterStmts := []string{"SET sql_safe_updates = false"}
+	for _, tableName := range tableNames {
+		for _, colName := range []string{"col1", "col2"} {
+			alterStmts = append(alterStmts, fmt.Sprintf(`ALTER TABLE %s DROP %s`, tableName, colName))
+		}
+	}
+	sqlDB.ExecMultiple(t, alterStmts...)
+}
+
 func registerCDC(r registry.Registry) {
 	r.Add(registry.TestSpec{
 		Name:            "cdc/initial-scan-only",
@@ -2281,6 +2314,17 @@ func registerCDC(r registry.Registry) {
 		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
 			runCDCSchemaRegistry(ctx, t, c)
 		},
+	})
+	// This is a regression test for #136847.
+	r.Add(registry.TestSpec{
+		Name:             "cdc/multiple-schema-changes",
+		Owner:            registry.OwnerCDC,
+		Benchmark:        false,
+		Cluster:          r.MakeClusterSpec(3, spec.CPU(16)),
+		RequiresLicense:  true,
+		CompatibleClouds: registry.AllClouds,
+		Suites:           registry.Suites(registry.Nightly),
+		Run:              runCDCMultipleSchemaChanges,
 	})
 }
 
