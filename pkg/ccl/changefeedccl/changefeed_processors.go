@@ -1944,6 +1944,13 @@ func (cf *changeFrontier) ConsumerClosed() {
 // to the underlying span.Frontier.
 type spanFrontier = span.Frontier
 
+type processorType bool
+
+const (
+	aggregatorProcessor processorType = false
+	frontierProcessor   processorType = true
+)
+
 // schemaChangeFrontier encapsulates the span frontier, which keeps track of the
 // per-span timestamps we no longer need to emit, along with information about
 // the most recently observed schema change boundary.
@@ -1983,6 +1990,10 @@ type schemaChangeFrontier struct {
 
 	// latestKV indicates the last time any aggregator received a kv event
 	latestKV time.Time
+
+	// processorType indicates the type of processor that made the frontier.
+	// The behavior around schema changes is slightly different.
+	processorType bool
 }
 
 func makeSchemaChangeFrontier(
@@ -2012,13 +2023,15 @@ func makeSchemaChangeFrontier(
 // of updating schema change boundary information.
 func (f *schemaChangeFrontier) ForwardResolvedSpan(r jobspb.ResolvedSpan) (bool, error) {
 	if r.BoundaryType != jobspb.ResolvedSpan_NONE {
-		if !f.boundaryTime.IsEmpty() && r.Timestamp.Less(f.boundaryTime) {
+		if !f.boundaryTime.IsEmpty() && r.Timestamp.Less(f.boundaryTime) && r.BoundaryType != jobspb.ResolvedSpan_BACKFILL {
+			// TODO this is only true for aggregators
 			// Boundary resolved events should be ingested from the schema feed
 			// serially, where the changefeed won't even observe a new schema change
-			// boundary until it has progressed past the current boundary
-			return false, errors.AssertionFailedf("received boundary timestamp %v < %v "+
-				"of type %v before reaching existing boundary of type %v",
-				r.Timestamp, f.boundaryTime, r.BoundaryType, f.boundaryType)
+			// boundary until it has progressed past the current boundary.
+			return false, errors.AssertionFailedf("received resolved span for %s "+
+				"with boundary timestamp %v (%v), which is earlier than previously received "+
+				"boundary timestamp %v (%v)",
+				r.Span, r.Timestamp, r.BoundaryType, f.boundaryTime, f.boundaryType)
 		}
 		f.boundaryTime = r.Timestamp
 		f.boundaryType = r.BoundaryType
