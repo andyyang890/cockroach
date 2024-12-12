@@ -848,7 +848,7 @@ func (ca *changeAggregator) noteResolvedSpan(resolved jobspb.ResolvedSpan) (retu
 		return nil
 	}
 
-	advanced, err := ca.frontier.ForwardResolvedSpan(resolved)
+	advanced, err := ca.frontier.ForwardResolvedSpan(ca.Ctx(), resolved, aggregatorProcessor)
 	if err != nil {
 		return err
 	}
@@ -1615,7 +1615,7 @@ func (cf *changeFrontier) noteAggregatorProgress(d rowenc.EncDatum) error {
 }
 
 func (cf *changeFrontier) forwardFrontier(resolved jobspb.ResolvedSpan) error {
-	frontierChanged, err := cf.frontier.ForwardResolvedSpan(resolved)
+	frontierChanged, err := cf.frontier.ForwardResolvedSpan(cf.Ctx(), resolved, frontierProcessor)
 	if err != nil {
 		return err
 	}
@@ -1944,13 +1944,6 @@ func (cf *changeFrontier) ConsumerClosed() {
 // to the underlying span.Frontier.
 type spanFrontier = span.Frontier
 
-type processorType bool
-
-const (
-	aggregatorProcessor processorType = false
-	frontierProcessor   processorType = true
-)
-
 // schemaChangeFrontier encapsulates the span frontier, which keeps track of the
 // per-span timestamps we no longer need to emit, along with information about
 // the most recently observed schema change boundary.
@@ -1990,10 +1983,6 @@ type schemaChangeFrontier struct {
 
 	// latestKV indicates the last time any aggregator received a kv event
 	latestKV time.Time
-
-	// processorType indicates the type of processor that made the frontier.
-	// The behavior around schema changes is slightly different.
-	processorType bool
 }
 
 func makeSchemaChangeFrontier(
@@ -2019,19 +2008,40 @@ func makeSchemaChangeFrontier(
 	return scf, nil
 }
 
+type processorType bool
+
+const (
+	aggregatorProcessor processorType = false
+	frontierProcessor   processorType = true
+)
+
 // ForwardResolvedSpan advances the timestamp for a resolved span, taking care
 // of updating schema change boundary information.
-func (f *schemaChangeFrontier) ForwardResolvedSpan(r jobspb.ResolvedSpan) (bool, error) {
-	if r.BoundaryType != jobspb.ResolvedSpan_NONE {
-		if !f.boundaryTime.IsEmpty() && r.Timestamp.Less(f.boundaryTime) && r.BoundaryType != jobspb.ResolvedSpan_BACKFILL {
-			// TODO this is only true for aggregators
+func (f *schemaChangeFrontier) ForwardResolvedSpan(
+	ctx context.Context, r jobspb.ResolvedSpan, ptype processorType,
+) (bool, error) {
+	switch r.BoundaryType {
+	case jobspb.ResolvedSpan_NONE:
+	case jobspb.ResolvedSpan_BACKFILL:
+		if ptype == frontierProcessor {
+			if f.boundaryTime.IsEmpty() || f.boundaryTime.Less(r.Timestamp) {
+				f.boundaryTime = r.Timestamp
+				f.boundaryType = r.BoundaryType
+			}
+			break
+		}
+		fallthrough
+	default:
+		if !f.boundaryTime.IsEmpty() && r.Timestamp.Less(f.boundaryTime) {
 			// Boundary resolved events should be ingested from the schema feed
 			// serially, where the changefeed won't even observe a new schema change
 			// boundary until it has progressed past the current boundary.
-			return false, errors.AssertionFailedf("received resolved span for %s "+
+			err := errors.AssertionFailedf("received resolved span for %s "+
 				"with boundary timestamp %v (%v), which is earlier than previously received "+
 				"boundary timestamp %v (%v)",
 				r.Span, r.Timestamp, r.BoundaryType, f.boundaryTime, f.boundaryType)
+			log.Errorf(ctx, "error while forwarding resolved span with boundary type: %v", err)
+			return false, err
 		}
 		f.boundaryTime = r.Timestamp
 		f.boundaryType = r.BoundaryType
