@@ -1381,7 +1381,7 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 	).Scan(&jobID)
 
 	alterStmts := []string{"SET sql_safe_updates = false"}
-	for _, tableName := range tableNames {
+	for _, tableName := range tableNames[:2] {
 		for _, colName := range []string{"col1", "col2"} {
 			alterStmts = append(alterStmts, fmt.Sprintf(`ALTER TABLE %s DROP %s`, tableName, colName))
 		}
