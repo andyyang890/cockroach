@@ -2051,7 +2051,7 @@ func (f *schemaChangeFrontier) ForwardResolvedSpan(
 				"with boundary timestamp %v (%v), which is earlier than previously received "+
 				"boundary timestamp %v (%v)",
 				r.Span, r.Timestamp, r.BoundaryType, f.boundaryTime, f.boundaryType)
-			log.Errorf(ctx, "error while forwarding resolved span with boundary type: %v", err)
+			log.Errorf(ctx, "error while forwarding boundary resolved span: %v", err)
 			return false, err
 		}
 		f.boundaryTime = r.Timestamp
