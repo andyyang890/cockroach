@@ -2023,6 +2023,12 @@ func (f *schemaChangeFrontier) ForwardResolvedSpan(
 	switch r.BoundaryType {
 	case jobspb.ResolvedSpan_NONE:
 	case jobspb.ResolvedSpan_BACKFILL:
+		// The change frontier collects resolved spans from all the change
+		// aggregators. Since a BACKFILL schema change does not cause an
+		// aggregator to shut down, an aggregator may encounter a second
+		// schema change (and send resolved spans for that second schema
+		// change) before the frontier has received resolved spans for the
+		// first BACKFILL schema change from all aggregators.
 		if ptype == frontierProcessor {
 			if f.boundaryTime.IsEmpty() || f.boundaryTime.Less(r.Timestamp) {
 				f.boundaryTime = r.Timestamp
