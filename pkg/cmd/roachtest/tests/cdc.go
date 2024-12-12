@@ -1366,6 +1366,7 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 	sqlDB.Exec(t, "SET CLUSTER SETTING kv.rangefeed.enabled = true")
 
 	tableNames := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
+	// TODO maybe reduce to just one column
 	for _, tableName := range tableNames {
 		createStmt := fmt.Sprintf(`CREATE TABLE %s (
 	id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -1381,6 +1382,7 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 	).Scan(&jobID)
 
 	alterStmts := []string{"SET sql_safe_updates = false"}
+	// TODO [:2]
 	for _, tableName := range tableNames[:2] {
 		for _, colName := range []string{"col1", "col2"} {
 			alterStmts = append(alterStmts, fmt.Sprintf(`ALTER TABLE %s DROP %s`, tableName, colName))
@@ -1393,6 +1395,7 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 	sqlDB.Exec(t, "INSERT INTO a DEFAULT VALUES")
 
 	t.L().Printf("waiting for changefeed highwater to pass %s", timeAfterSchemaChanges)
+highwaterLoop:
 	for {
 		select {
 		case <-ctx.Done():
@@ -1412,7 +1415,7 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 			}
 			hw := info.GetHighWater()
 			if hw.After(timeAfterSchemaChanges) {
-				break
+				break highwaterLoop
 			}
 			t.L().Printf("changefeed highwater is %s <= %s", hw, timeAfterSchemaChanges)
 		}
