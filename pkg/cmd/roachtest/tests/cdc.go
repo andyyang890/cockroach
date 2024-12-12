@@ -1387,9 +1387,12 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 		}
 	}
 	sqlDB.ExecMultiple(t, alterStmts...)
+	timeAfterSchemaChanges := timeutil.Now()
 
-	now := timeutil.Now()
-	t.L().Printf("waiting for changefeed highwater to pass %s", now)
+	// Insert a row so the changefeed highwater will get updated.
+	sqlDB.Exec(t, "INSERT INTO a DEFAULT VALUES")
+
+	t.L().Printf("waiting for changefeed highwater to pass %s", timeAfterSchemaChanges)
 	for {
 		select {
 		case <-ctx.Done():
@@ -1408,10 +1411,10 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 				t.Fatalf("changefeed status is %s instead of running: %s", status, errorStr)
 			}
 			hw := info.GetHighWater()
-			if hw.After(now) {
+			if hw.After(timeAfterSchemaChanges) {
 				break
 			}
-			t.L().Printf("changefeed highwater is %s <= %s", hw, now)
+			t.L().Printf("changefeed highwater is %s <= %s", hw, timeAfterSchemaChanges)
 		}
 	}
 }
