@@ -581,7 +581,7 @@ func (ca *changeAggregator) setupSpansAndFrontier() (spans []roachpb.Span, err e
 		}
 	}
 
-	ca.frontier, err = makeSchemaChangeFrontier(aggregatorProcessor, initialHighWater, spans...)
+	ca.frontier, err = makeSchemaChangeFrontier(aggregatorSchemaChangeFrontier, initialHighWater, spans...)
 	if err != nil {
 		return nil, err
 	}
@@ -1172,7 +1172,7 @@ func newChangeFrontierProcessor(
 	post *execinfrapb.PostProcessSpec,
 ) (execinfra.Processor, error) {
 	memMonitor := execinfra.NewMonitor(ctx, flowCtx.Mon, "changefntr-mem")
-	sf, err := makeSchemaChangeFrontier(frontierProcessor, hlc.Timestamp{}, spec.TrackedSpans...)
+	sf, err := makeSchemaChangeFrontier(frontierSchemaChangeFrontier, hlc.Timestamp{}, spec.TrackedSpans...)
 	if err != nil {
 		return nil, err
 	}
@@ -1944,11 +1944,11 @@ func (cf *changeFrontier) ConsumerClosed() {
 // to the underlying span.Frontier.
 type spanFrontier = span.Frontier
 
-type processorType bool
+type schemaChangeFrontierType bool
 
 const (
-	aggregatorProcessor processorType = false
-	frontierProcessor   processorType = true
+	aggregatorSchemaChangeFrontier schemaChangeFrontierType = false
+	frontierSchemaChangeFrontier   schemaChangeFrontierType = true
 )
 
 // schemaChangeFrontier encapsulates the span frontier, which keeps track of the
@@ -1957,9 +1957,9 @@ const (
 type schemaChangeFrontier struct {
 	spanFrontier
 
-	// processorType denotes the type of changefeed processor that the
+	// frontierType denotes the type of changefeed processor that the
 	// schemaChangeFrontier is running on.
-	processorType processorType
+	frontierType schemaChangeFrontierType
 
 	// schemaChangeBoundary values are communicated to the changeFrontier via
 	// Resolved messages send from the changeAggregators. The policy regarding
@@ -1997,14 +1997,14 @@ type schemaChangeFrontier struct {
 }
 
 func makeSchemaChangeFrontier(
-	processorType processorType, initialHighWater hlc.Timestamp, spans ...roachpb.Span,
+	frontierType schemaChangeFrontierType, initialHighWater hlc.Timestamp, spans ...roachpb.Span,
 ) (*schemaChangeFrontier, error) {
 	sf, err := span.MakeFrontierAt(initialHighWater, spans...)
 	if err != nil {
 		return nil, err
 	}
 	scf := &schemaChangeFrontier{
-		processorType:    processorType,
+		frontierType:     frontierType,
 		initialHighWater: initialHighWater,
 		latestTs:         initialHighWater,
 
@@ -2034,7 +2034,7 @@ func (f *schemaChangeFrontier) ForwardResolvedSpan(
 		// schema change (and send resolved spans for that second schema
 		// change) before the frontier has received resolved spans for the
 		// first BACKFILL schema change from all aggregators.
-		if f.processorType == frontierProcessor {
+		if f.frontierType == frontierSchemaChangeFrontier {
 			if f.boundaryTime.IsEmpty() || f.boundaryTime.Less(r.Timestamp) {
 				f.boundaryTime = r.Timestamp
 				f.boundaryType = r.BoundaryType
