@@ -1366,12 +1366,10 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 	sqlDB.Exec(t, "SET CLUSTER SETTING kv.rangefeed.enabled = true")
 
 	tableNames := []string{"a", "b", "c", "d", "e", "f", "g", "h"}
-	// TODO maybe reduce to just one column
 	for _, tableName := range tableNames {
 		createStmt := fmt.Sprintf(`CREATE TABLE %s (
 	id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-	col1 TIMESTAMP(6) NULL,
-	col2 TIMESTAMP(6) NULL
+	col TIMESTAMP(6) NULL
 )`, tableName)
 		sqlDB.Exec(t, createStmt)
 	}
@@ -1382,17 +1380,11 @@ func runCDCMultipleSchemaChanges(ctx context.Context, t test.Test, c cluster.Clu
 	).Scan(&jobID)
 
 	alterStmts := []string{"SET sql_safe_updates = false"}
-	// TODO [:2]
-	for _, tableName := range tableNames[:2] {
-		for _, colName := range []string{"col1", "col2"} {
-			alterStmts = append(alterStmts, fmt.Sprintf(`ALTER TABLE %s DROP %s`, tableName, colName))
-		}
+	for _, tableName := range tableNames {
+		alterStmts = append(alterStmts, fmt.Sprintf(`ALTER TABLE %s DROP col`, tableName))
 	}
 	sqlDB.ExecMultiple(t, alterStmts...)
 	timeAfterSchemaChanges := timeutil.Now()
-
-	// Insert a row so the changefeed highwater will get updated.
-	sqlDB.Exec(t, "INSERT INTO a DEFAULT VALUES")
 
 	t.L().Printf("waiting for changefeed highwater to pass %s", timeAfterSchemaChanges)
 highwaterLoop:
