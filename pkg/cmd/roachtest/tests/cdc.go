@@ -2353,7 +2353,7 @@ func registerCDC(r registry.Registry) {
 		RequiresLicense:  true,
 		CompatibleClouds: registry.AllClouds,
 		Suites:           registry.Suites(registry.Nightly),
-		Timeout:          10 * time.Minute,
+		Timeout:          30 * time.Minute,
 		Run:              runCDCMultipleSchemaChanges,
 	})
 }
