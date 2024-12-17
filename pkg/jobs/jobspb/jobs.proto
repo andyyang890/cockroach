@@ -1177,6 +1177,7 @@ message ChangefeedProgress {
   message Checkpoint {
     repeated roachpb.Span spans = 1 [(gogoproto.nullable) = false];
     util.hlc.Timestamp timestamp = 2 [(gogoproto.nullable) = false];
+    repeated util.hlc.Timestamp timestamps = 3 [(gogoproto.nullable) = false];
   }
 
   reserved 2;
