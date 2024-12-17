@@ -1175,8 +1175,14 @@ message ChangefeedProgress {
   // if specific spans are having issues progressing.  On restart, the
   // changefeed will forward the specified spans to the specified timestamp.
   message Checkpoint {
+    message TimestampCountPair {
+      util.hlc.Timestamp timestamp = 1 [(gogoproto.nullable) = false];
+      uint32 count = 2;
+    }
+
     repeated roachpb.Span spans = 1 [(gogoproto.nullable) = false];
     util.hlc.Timestamp timestamp = 2 [(gogoproto.nullable) = false];
+    repeated TimestampCountPair timestamp_counts = 3 [(gogoproto.nullable) = false];
   }
 
   reserved 2;
