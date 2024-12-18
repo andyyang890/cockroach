@@ -9804,3 +9804,84 @@ func TestChangefeedProtectedTimestampUpdate(t *testing.T) {
 
 	cdcTest(t, testFn, feedTestForceSink("kafka"), withTxnRetries)
 }
+
+func TestChangefeedCheckpointSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	rand, _ := randutil.NewTestRand()
+
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{
+		DefaultTestTenant: base.TODOTestTenantDisabled,
+	})
+	defer s.Stopper().Stop(ctx)
+	sqlDB := sqlutils.MakeSQLRunner(db)
+	sqlDB.ExecMultiple(t,
+		"CREATE TABLE t (x int PRIMARY KEY NOT NULL, a int, b int)",
+		"INSERT INTO t SELECT * FROM generate_series(1, 10000)",
+		"ALTER TABLE t split AT SELECT * FROM generate_series(1, 10000)",
+	)
+
+	var spans roachpb.Spans
+	rows := sqlDB.Query(t, "SELECT raw_start_key, raw_end_key FROM [SHOW RANGES FROM TABLE t WITH KEYS]")
+	for rows.Next() {
+		var start, end roachpb.Key
+		require.NoError(t, rows.Scan(&start, &end))
+		spans = append(spans, roachpb.Span{Key: start, EndKey: end})
+	}
+
+	generateTimestampCounts := func(
+		n int,
+		baseTime hlc.Timestamp,
+		numDiffTimestamps int64,
+	) []jobspb.ChangefeedProgress_Checkpoint_TimestampCountPair {
+		counts := make(map[hlc.Timestamp]uint32)
+		for range n {
+			ts := baseTime.Add(randutil.RandInt63InRange(rand, 1, numDiffTimestamps), 0)
+			counts[ts] += 1
+		}
+		countPairs := make([]jobspb.ChangefeedProgress_Checkpoint_TimestampCountPair, 0, len(counts))
+		for ts, count := range counts {
+			countPairs = append(countPairs, jobspb.ChangefeedProgress_Checkpoint_TimestampCountPair{Timestamp: ts, Count: count})
+		}
+		return countPairs
+	}
+
+	calculateCheckpointSize := func(
+		name string,
+		spans roachpb.Spans,
+		timestamp hlc.Timestamp,
+		timestampCounts []jobspb.ChangefeedProgress_Checkpoint_TimestampCountPair,
+	) {
+		checkpoint := &jobspb.ChangefeedProgress_Checkpoint{
+			Spans:           spans,
+			Timestamp:       timestamp,
+			TimestampCounts: timestampCounts,
+		}
+		bytes, err := protoutil.Marshal(checkpoint)
+		require.NoError(t, err)
+		t.Logf("scenario %s: size of checkpoint: %s", name, humanize.Bytes(uint64(len(bytes))))
+	}
+
+	clock := hlc.NewClockForTesting(nil)
+	now := clock.Now()
+
+	calculateCheckpointSize("timestamps are all the same",
+		spans,
+		now,
+		nil,
+	)
+
+	calculateCheckpointSize("very few unique timestamps",
+		spans,
+		now,
+		generateTimestampCounts(len(spans), now, 5),
+	)
+
+	calculateCheckpointSize("many unique timestamps",
+		spans,
+		now,
+		generateTimestampCounts(len(spans), now, 1000),
+	)
+}
