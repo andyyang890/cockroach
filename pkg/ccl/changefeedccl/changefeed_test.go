@@ -9847,12 +9847,34 @@ func TestChangefeedCheckpointSize(t *testing.T) {
 		name string,
 		spans roachpb.Spans,
 		timestamp hlc.Timestamp,
-		timestampCounts []hlc.Timestamp,
+		timestamps []hlc.Timestamp,
 	) {
+		f, err := span.MakeFrontierAt(timestamp, spans...)
+		require.NoError(t, err)
+
+		if len(timestamps) != 0 {
+			for i, span := range spans {
+				_, err := f.Forward(span, timestamps[i])
+				require.NoError(t, err)
+			}
+		}
+
+		_, oldCheckpointTimestamp := getCheckpointSpans(f.Frontier(), f.Entries, 1<<20 /* 1 MiB */)
+
+		var cSpans roachpb.Spans
+		var cTimestamps []hlc.Timestamp
+		f.Entries(func(r roachpb.Span, timestamp hlc.Timestamp) (done span.OpResult) {
+			if oldCheckpointTimestamp.LessEq(timestamp) {
+				cSpans = append(cSpans, r)
+				cTimestamps = append(cTimestamps, timestamp)
+			}
+			return span.ContinueMatch
+		})
+
 		checkpoint := &jobspb.ChangefeedProgress_Checkpoint{
-			Spans:      spans,
+			Spans:      cSpans,
 			Timestamp:  timestamp,
-			Timestamps: timestampCounts,
+			Timestamps: cTimestamps,
 		}
 		bytes, err := protoutil.Marshal(checkpoint)
 		require.NoError(t, err)
