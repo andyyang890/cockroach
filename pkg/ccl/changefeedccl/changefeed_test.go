@@ -9831,36 +9831,56 @@ func TestChangefeedCheckpointSize(t *testing.T) {
 		spans = append(spans, roachpb.Span{Key: start, EndKey: end})
 	}
 
-	generateTimestampSpansMap := func(
-		spans roachpb.Spans,
+	generateTimestamps := func(
+		n int,
 		baseTime hlc.Timestamp,
 		numDiffTimestamps int64,
-	) []jobspb.ChangefeedProgress_Checkpoint_TimestampSpansMapEntry {
-		m := make(map[hlc.Timestamp]roachpb.Spans)
-		for _, span := range spans {
-			ts := baseTime.Add(randutil.RandInt63InRange(rand, 1, numDiffTimestamps), 0)
-			m[ts] = append(m[ts], span)
+	) []hlc.Timestamp {
+		timestamps := make([]hlc.Timestamp, n)
+		for i := range timestamps {
+			timestamps[i] = baseTime.Add(randutil.RandInt63InRange(rand, 1, numDiffTimestamps), 0)
 		}
-		entries := make([]jobspb.ChangefeedProgress_Checkpoint_TimestampSpansMapEntry, 0, len(m))
-		for t, s := range m {
-			entries = append(entries, jobspb.ChangefeedProgress_Checkpoint_TimestampSpansMapEntry{
-				Timestamp: t,
-				Spans:     s,
-			})
-		}
-		return entries
+		return timestamps
 	}
 
 	calculateCheckpointSize := func(
 		name string,
 		spans roachpb.Spans,
 		timestamp hlc.Timestamp,
-		timestampSpansMap []jobspb.ChangefeedProgress_Checkpoint_TimestampSpansMapEntry,
+		timestamps []hlc.Timestamp,
 	) {
+		f, err := span.MakeFrontierAt(timestamp, spans...)
+		require.NoError(t, err)
+
+		if len(timestamps) != 0 {
+			for i, span := range spans {
+				_, err := f.Forward(span, timestamps[i])
+				require.NoError(t, err)
+			}
+		}
+
+		oldCheckpointSpans, oldCheckpointTimestamp := getCheckpointSpans(f.Frontier(), f.Entries, 1<<20 /* 1 MiB */)
+
+		timestampSpansMap := make(map[hlc.Timestamp][]roachpb.Span)
+		f.Entries(func(r roachpb.Span, timestamp hlc.Timestamp) (done span.OpResult) {
+			if oldCheckpointTimestamp.LessEq(timestamp) {
+				timestampSpansMap[timestamp] = append(timestampSpansMap[timestamp], r)
+			}
+			return span.ContinueMatch
+		})
+
+		var cMap []jobspb.ChangefeedProgress_Checkpoint_TimestampSpansMapEntry
+		for ts, s := range timestampSpansMap {
+			cMap = append(cMap, jobspb.ChangefeedProgress_Checkpoint_TimestampSpansMapEntry{
+				Timestamp: ts,
+				Spans:     s,
+			})
+		}
+
 		checkpoint := &jobspb.ChangefeedProgress_Checkpoint{
-			Spans:             spans,
+			Spans:             oldCheckpointSpans,
 			Timestamp:         timestamp,
-			TimestampSpansMap: timestampSpansMap,
+			TimestampSpansMap: cMap,
 		}
 		bytes, err := protoutil.Marshal(checkpoint)
 		require.NoError(t, err)
@@ -9879,12 +9899,12 @@ func TestChangefeedCheckpointSize(t *testing.T) {
 	calculateCheckpointSize("very few unique timestamps",
 		spans,
 		now,
-		generateTimestampSpansMap(spans, now, 5),
+		generateTimestamps(len(spans), now, 5),
 	)
 
 	calculateCheckpointSize("many unique timestamps",
 		spans,
 		now,
-		generateTimestampSpansMap(spans, now, 1000),
+		generateTimestamps(len(spans), now, 1000),
 	)
 }
