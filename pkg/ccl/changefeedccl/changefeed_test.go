@@ -9831,29 +9831,51 @@ func TestChangefeedCheckpointSize(t *testing.T) {
 		spans = append(spans, roachpb.Span{Key: start, EndKey: end})
 	}
 
-	generateTimestampedSpans := func(
-		spans roachpb.Spans,
+	generateTimestamps := func(
+		n int,
 		baseTime hlc.Timestamp,
 		numDiffTimestamps int64,
-	) []jobspb.ChangefeedProgress_Checkpoint_SpanTimestampPair {
-		pairs := make([]jobspb.ChangefeedProgress_Checkpoint_SpanTimestampPair, len(spans))
-		for i, span := range spans {
-			ts := baseTime.Add(randutil.RandInt63InRange(rand, 1, numDiffTimestamps), 0)
-			pairs[i] = jobspb.ChangefeedProgress_Checkpoint_SpanTimestampPair{Span: span, Timestamp: ts}
+	) []hlc.Timestamp {
+		timestamps := make([]hlc.Timestamp, n)
+		for i := range timestamps {
+			timestamps[i] = baseTime.Add(randutil.RandInt63InRange(rand, 1, numDiffTimestamps), 0)
 		}
-		return pairs
+		return timestamps
 	}
 
 	calculateCheckpointSize := func(
 		name string,
 		spans roachpb.Spans,
 		timestamp hlc.Timestamp,
-		timestampedSpans []jobspb.ChangefeedProgress_Checkpoint_SpanTimestampPair,
+		timestamps []hlc.Timestamp,
 	) {
+		f, err := span.MakeFrontierAt(timestamp, spans...)
+		require.NoError(t, err)
+
+		if len(timestamps) != 0 {
+			for i, span := range spans {
+				_, err := f.Forward(span, timestamps[i])
+				require.NoError(t, err)
+			}
+		}
+
+		oldCheckpointSpans, oldCheckpointTimestamp := getCheckpointSpans(f.Frontier(), f.Entries, 1<<20 /* 1 MiB */)
+
+		var cPairs []jobspb.ChangefeedProgress_Checkpoint_SpanTimestampPair
+		f.Entries(func(r roachpb.Span, timestamp hlc.Timestamp) (done span.OpResult) {
+			if oldCheckpointTimestamp.LessEq(timestamp) {
+				cPairs = append(cPairs, jobspb.ChangefeedProgress_Checkpoint_SpanTimestampPair{
+					Span:      r,
+					Timestamp: timestamp,
+				})
+			}
+			return span.ContinueMatch
+		})
+
 		checkpoint := &jobspb.ChangefeedProgress_Checkpoint{
-			Spans:            spans,
+			Spans:            oldCheckpointSpans,
 			Timestamp:        timestamp,
-			TimestampedSpans: timestampedSpans,
+			TimestampedSpans: cPairs,
 		}
 		bytes, err := protoutil.Marshal(checkpoint)
 		require.NoError(t, err)
@@ -9872,12 +9894,12 @@ func TestChangefeedCheckpointSize(t *testing.T) {
 	calculateCheckpointSize("very few unique timestamps",
 		spans,
 		now,
-		generateTimestampedSpans(spans, now, 5),
+		generateTimestamps(len(spans), now, 5),
 	)
 
 	calculateCheckpointSize("many unique timestamps",
 		spans,
 		now,
-		generateTimestampedSpans(spans, now, 1000),
+		generateTimestamps(len(spans), now, 1000),
 	)
 }
