@@ -71,3 +71,20 @@ func Make(
 
 	return cp
 }
+
+type SpanForwarder interface {
+	Forward(span roachpb.Span, ts hlc.Timestamp) (bool, error)
+}
+
+func Restore(
+	sf SpanForwarder,
+	oldCheckpoint *jobspb.ChangefeedProgress_Checkpoint,
+	checkpoint *jobspb.TimestampSpansMap,
+) error {
+	if oldCheckpoint != nil {
+		// TODO fill in
+		return nil
+	}
+	// TODO fill in
+	return nil
+}
