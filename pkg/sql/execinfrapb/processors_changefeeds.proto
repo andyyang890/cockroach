@@ -31,12 +31,13 @@ message ChangeAggregatorSpec {
 
   // Checkpoint enables change aggregators to resume faster on restart.
   message Checkpoint {
+    option deprecated = true;
     repeated roachpb.Span spans = 1 [(gogoproto.nullable) = false];
     optional util.hlc.Timestamp timestamp = 2 [(gogoproto.nullable) = false];
   }
 
   // Change aggregator checkpoint
-  optional Checkpoint checkpoint = 5 [(gogoproto.nullable) = false];
+  optional Checkpoint checkpoint = 5 [(gogoproto.nullable) = false, deprecated=true];
 
   // Feed is the specification for this changefeed.
   optional cockroach.sql.jobs.jobspb.ChangefeedDetails feed = 2 [(gogoproto.nullable) = false];
