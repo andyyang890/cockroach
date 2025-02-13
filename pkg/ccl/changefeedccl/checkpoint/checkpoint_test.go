@@ -6,6 +6,7 @@
 package checkpoint_test
 
 import (
+	"context"
 	"math"
 	"sort"
 	"testing"
@@ -13,9 +14,12 @@ import (
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/checkpoint"
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvserver/rangefeed"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/settings/cluster"
+	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
@@ -58,7 +62,8 @@ func TestCheckpointMake(t *testing.T) {
 		spans    checkpointSpans
 		maxBytes int64
 		//lint:ignore SA1019 deprecated usage
-		expected jobspb.ChangefeedProgress_Checkpoint
+		expectedLegacyCheckpoint *jobspb.ChangefeedProgress_Checkpoint
+		expectedCheckpoint       *jobspb.TimestampSpansMap
 	}{
 		"all spans ahead of frontier checkpointed": {
 			frontier: ts(1),
@@ -70,13 +75,17 @@ func TestCheckpointMake(t *testing.T) {
 			},
 			maxBytes: 100,
 			//lint:ignore SA1019 deprecated usage
-			expected: jobspb.ChangefeedProgress_Checkpoint{
+			expectedLegacyCheckpoint: &jobspb.ChangefeedProgress_Checkpoint{
 				Timestamp: ts(2),
 				Spans: []roachpb.Span{
 					{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")},
 					{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")},
 				},
 			},
+			expectedCheckpoint: jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
+				ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
+				ts(4): {{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")}},
+			}),
 		},
 		"only some spans ahead of frontier checkpointed because of maxBytes constraint": {
 			frontier: ts(1),
@@ -88,10 +97,15 @@ func TestCheckpointMake(t *testing.T) {
 			},
 			maxBytes: 2,
 			//lint:ignore SA1019 deprecated usage
-			expected: jobspb.ChangefeedProgress_Checkpoint{
+			expectedLegacyCheckpoint: &jobspb.ChangefeedProgress_Checkpoint{
 				Timestamp: ts(2),
 				Spans:     []roachpb.Span{{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
 			},
+			// TODO this one has multiple options
+			expectedCheckpoint: jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
+				ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
+				//ts(4): {{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")}},
+			}),
 		},
 		"no spans checkpointed because of maxBytes constraint": {
 			frontier: ts(1),
@@ -103,9 +117,8 @@ func TestCheckpointMake(t *testing.T) {
 			},
 			maxBytes: 0,
 			//lint:ignore SA1019 deprecated usage
-			expected: jobspb.ChangefeedProgress_Checkpoint{
-				Timestamp: ts(2),
-			},
+			expectedLegacyCheckpoint: nil,
+			expectedCheckpoint:       nil,
 		},
 		"no spans checkpointed because all spans are at frontier": {
 			frontier: ts(1),
@@ -117,49 +130,78 @@ func TestCheckpointMake(t *testing.T) {
 			},
 			maxBytes: 100,
 			//lint:ignore SA1019 deprecated usage
-			expected: jobspb.ChangefeedProgress_Checkpoint{},
+			expectedLegacyCheckpoint: nil,
+			expectedCheckpoint:       nil,
 		},
 		"adjacent spans ahead of frontier merged before being checkpointed": {
 			frontier: ts(1),
 			spans: checkpointSpans{
 				{span: roachpb.Span{Key: roachpb.Key("a"), EndKey: roachpb.Key("b")}, ts: ts(1)},
 				{span: roachpb.Span{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}, ts: ts(2)},
-				{span: roachpb.Span{Key: roachpb.Key("c"), EndKey: roachpb.Key("d")}, ts: ts(4)},
+				{span: roachpb.Span{Key: roachpb.Key("c"), EndKey: roachpb.Key("d")}, ts: ts(2)},
 				{span: roachpb.Span{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")}, ts: ts(1)},
 			},
 			maxBytes: 100,
 			//lint:ignore SA1019 deprecated usage
-			expected: jobspb.ChangefeedProgress_Checkpoint{
+			expectedLegacyCheckpoint: &jobspb.ChangefeedProgress_Checkpoint{
 				Timestamp: ts(2),
 				Spans:     []roachpb.Span{{Key: roachpb.Key("b"), EndKey: roachpb.Key("d")}},
 			},
+			expectedCheckpoint: jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
+				ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("d")}},
+			}),
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			aggMetrics := checkpoint.NewAggMetrics(aggmetric.MakeBuilder())
-			actual := checkpoint.Make(
-				tc.frontier,
-				func(fn span.Operation) {
-					for _, sp := range tc.spans {
-						fn(sp.span, sp.ts)
-					}
-				},
-				tc.maxBytes,
-				aggMetrics.AddChild(),
-			)
-			require.Equal(t, tc.expected, actual)
+			legacyCheckpointVersion := clusterversion.V25_1.Version()
+			currentCheckpointVersion := clusterversion.Latest.Version()
+			testutils.RunValues(t, "cluster version",
+				[]roachpb.Version{legacyCheckpointVersion, currentCheckpointVersion},
+				func(t *testing.T, clusterVersion roachpb.Version) {
+					ctx := context.Background()
 
-			// Verify that metrics were set/not set based on whether a
-			// checkpoint was created.
-			if tc.expected.Timestamp.IsSet() {
-				require.Greater(t, aggMetrics.CreateNanos.CumulativeSnapshot().Mean(), float64(0))
-				require.Greater(t, aggMetrics.TotalBytes.CumulativeSnapshot().Mean(), float64(0))
-				require.Equal(t, float64(len(tc.expected.Spans)), aggMetrics.SpanCount.CumulativeSnapshot().Mean())
-			} else {
-				require.True(t, math.IsNaN(aggMetrics.CreateNanos.CumulativeSnapshot().Mean()))
-				require.True(t, math.IsNaN(aggMetrics.TotalBytes.CumulativeSnapshot().Mean()))
-				require.True(t, math.IsNaN(aggMetrics.SpanCount.CumulativeSnapshot().Mean()))
-			}
+					aggMetrics := checkpoint.NewAggMetrics(aggmetric.MakeBuilder())
+
+					latestVersion := clusterversion.Latest.Version()
+					binaryVersion := clusterversion.Latest.Version()
+					minSupportedVersion := clusterversion.MinSupported.Version()
+					settings := cluster.MakeTestingClusterSettingsWithVersions(binaryVersion, minSupportedVersion, false)
+					require.NoError(t, clusterversion.Initialize(ctx, clusterVersion, &settings.SV))
+					cv := clusterversion.MakeVersionHandle(&settings.SV, latestVersion, minSupportedVersion)
+
+					actualLegacyCheckpoint, actualCheckpoint := checkpoint.Make(
+						tc.frontier,
+						func(fn span.Operation) {
+							for _, sp := range tc.spans {
+								fn(sp.span, sp.ts)
+							}
+						},
+						tc.maxBytes,
+						aggMetrics.AddChild(),
+						cv,
+					)
+
+					switch clusterVersion {
+					case legacyCheckpointVersion:
+						require.Equal(t, tc.expectedLegacyCheckpoint, actualLegacyCheckpoint)
+					case currentCheckpointVersion:
+						require.Equal(t, tc.expectedCheckpoint, actualCheckpoint)
+					default:
+						t.Fatalf("unknown cluster version: %s", clusterVersion)
+					}
+
+					// Verify that metrics were set/not set based on whether a
+					// checkpoint was created.
+					if actualLegacyCheckpoint != nil || actualCheckpoint != nil {
+						require.Greater(t, aggMetrics.CreateNanos.CumulativeSnapshot().Mean(), float64(0))
+						require.Greater(t, aggMetrics.TotalBytes.CumulativeSnapshot().Mean(), float64(0))
+						require.Equal(t, float64(len(tc.expectedLegacyCheckpoint.Spans)), aggMetrics.SpanCount.CumulativeSnapshot().Mean())
+					} else {
+						require.True(t, math.IsNaN(aggMetrics.CreateNanos.CumulativeSnapshot().Mean()))
+						require.True(t, math.IsNaN(aggMetrics.TotalBytes.CumulativeSnapshot().Mean()))
+						require.True(t, math.IsNaN(aggMetrics.SpanCount.CumulativeSnapshot().Mean()))
+					}
+				})
 		})
 	}
 }
@@ -327,15 +369,17 @@ func TestConvertLegacyCheckpoint(t *testing.T) {
 	}
 }
 
-// TestCheckpointCatchupTime generates 100 random non-overlapping spans with random
+// TestLegacyCheckpointCatchupTime generates 100 random non-overlapping spans with random
 // timestamps within a minute of each other and turns them into checkpoint
 // spans. It then does some sanity checks. It also compares the total
 // catchup time between the checkpoint timestamp and the high watermark.
 // Although the test relies on internal implementation details, it is a
 // good base to explore other fine-grained checkpointing algorithms.
-func TestCheckpointCatchupTime(t *testing.T) {
+func TestLegacyCheckpointCatchupTime(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
 
 	const numSpans = 100
 	maxBytes := changefeedbase.SpanCheckpointMaxBytes.Default()
@@ -362,7 +406,14 @@ func TestCheckpointCatchupTime(t *testing.T) {
 	}
 
 	// Compute the checkpoint.
-	cp := checkpoint.Make(hwm, forEachSpan, maxBytes, nil /* metrics */)
+	latestVersion := clusterversion.Latest.Version()
+	minSupportedVersion := clusterversion.MinSupported.Version()
+	clusterVersion := clusterversion.V25_1.Version()
+	settings := cluster.MakeTestingClusterSettingsWithVersions(latestVersion, clusterversion.V25_1.Version(), false)
+	require.NoError(t, clusterversion.Initialize(ctx, clusterVersion, &settings.SV))
+	cv := clusterversion.MakeVersionHandle(&settings.SV, latestVersion, minSupportedVersion)
+
+	cp, _ := checkpoint.Make(hwm, forEachSpan, maxBytes, nil /* metrics */, cv)
 	cpSpans, cpTS := roachpb.Spans(cp.Spans), cp.Timestamp
 	require.Less(t, len(cpSpans), numSpans)
 	require.True(t, hwm.Less(cpTS))

@@ -94,6 +94,10 @@ func (tsm *TimestampSpansMap) ToGoMap() map[hlc.Timestamp]roachpb.Spans {
 	return m
 }
 
+func (tsm *TimestampSpansMap) IsZero() bool {
+	return len(tsm.Entries) == 0
+}
+
 func (m *ChangefeedProgress_Checkpoint) IsZero() bool {
 	return len(m.Spans) == 0 && m.Timestamp.IsEmpty()
 }
