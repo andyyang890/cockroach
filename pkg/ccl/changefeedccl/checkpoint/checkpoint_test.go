@@ -62,8 +62,8 @@ func TestCheckpointMake(t *testing.T) {
 		spans    checkpointSpans
 		maxBytes int64
 		//lint:ignore SA1019 deprecated usage
-		expectedLegacyCheckpoint *jobspb.ChangefeedProgress_Checkpoint
-		expectedCheckpoint       *jobspb.TimestampSpansMap
+		expectedLegacyCheckpoint        *jobspb.ChangefeedProgress_Checkpoint
+		expectedCheckpointPossibilities []map[hlc.Timestamp]roachpb.Spans
 	}{
 		"all spans ahead of frontier checkpointed": {
 			frontier: ts(1),
@@ -82,10 +82,12 @@ func TestCheckpointMake(t *testing.T) {
 					{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")},
 				},
 			},
-			expectedCheckpoint: jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
-				ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
-				ts(4): {{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")}},
-			}),
+			expectedCheckpointPossibilities: []map[hlc.Timestamp]roachpb.Spans{
+				{
+					ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
+					ts(4): {{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")}},
+				},
+			},
 		},
 		"only some spans ahead of frontier checkpointed because of maxBytes constraint": {
 			frontier: ts(1),
@@ -101,11 +103,14 @@ func TestCheckpointMake(t *testing.T) {
 				Timestamp: ts(2),
 				Spans:     []roachpb.Span{{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
 			},
-			// TODO this one has multiple options
-			expectedCheckpoint: jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
-				ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
-				//ts(4): {{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")}},
-			}),
+			expectedCheckpointPossibilities: []map[hlc.Timestamp]roachpb.Spans{
+				{
+					ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("c")}},
+				},
+				{
+					ts(4): {{Key: roachpb.Key("d"), EndKey: roachpb.Key("e")}},
+				},
+			},
 		},
 		"no spans checkpointed because of maxBytes constraint": {
 			frontier: ts(1),
@@ -117,8 +122,8 @@ func TestCheckpointMake(t *testing.T) {
 			},
 			maxBytes: 0,
 			//lint:ignore SA1019 deprecated usage
-			expectedLegacyCheckpoint: nil,
-			expectedCheckpoint:       nil,
+			expectedLegacyCheckpoint:        nil,
+			expectedCheckpointPossibilities: []map[hlc.Timestamp]roachpb.Spans{nil},
 		},
 		"no spans checkpointed because all spans are at frontier": {
 			frontier: ts(1),
@@ -130,8 +135,8 @@ func TestCheckpointMake(t *testing.T) {
 			},
 			maxBytes: 100,
 			//lint:ignore SA1019 deprecated usage
-			expectedLegacyCheckpoint: nil,
-			expectedCheckpoint:       nil,
+			expectedLegacyCheckpoint:        nil,
+			expectedCheckpointPossibilities: []map[hlc.Timestamp]roachpb.Spans{nil},
 		},
 		"adjacent spans ahead of frontier merged before being checkpointed": {
 			frontier: ts(1),
@@ -147,9 +152,11 @@ func TestCheckpointMake(t *testing.T) {
 				Timestamp: ts(2),
 				Spans:     []roachpb.Span{{Key: roachpb.Key("b"), EndKey: roachpb.Key("d")}},
 			},
-			expectedCheckpoint: jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
-				ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("d")}},
-			}),
+			expectedCheckpointPossibilities: []map[hlc.Timestamp]roachpb.Spans{
+				{
+					ts(2): {{Key: roachpb.Key("b"), EndKey: roachpb.Key("d")}},
+				},
+			},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -185,7 +192,7 @@ func TestCheckpointMake(t *testing.T) {
 					case legacyCheckpointVersion:
 						require.Equal(t, tc.expectedLegacyCheckpoint, actualLegacyCheckpoint)
 					case currentCheckpointVersion:
-						require.Equal(t, tc.expectedCheckpoint, actualCheckpoint)
+						require.Contains(t, tc.expectedCheckpointPossibilities, actualCheckpoint.ToGoMap())
 					default:
 						t.Fatalf("unknown cluster version: %s", clusterVersion)
 					}
