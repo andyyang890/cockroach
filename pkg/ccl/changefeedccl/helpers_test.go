@@ -772,32 +772,32 @@ func loadProgress(
 	return job.Progress()
 }
 
-// loadCheckpoint loads a checkpoint into a pointer and/or a span group.
-func loadCheckpoint(
-	t *testing.T,
-	progress jobspb.Progress,
-	cp **jobspb.TimestampSpansMap,
-	spanGroup *roachpb.SpanGroup,
-) bool {
+// loadCheckpoint loads the span-level checkpoint from the job progress.
+func loadCheckpoint(t *testing.T, progress jobspb.Progress) *jobspb.TimestampSpansMap {
 	t.Helper()
 	changefeedProgress := progress.GetChangefeed()
 	if changefeedProgress == nil {
-		return false
+		return nil
 	}
 	spanLevelCheckpoint := changefeedProgress.SpanLevelCheckpoint
 	if spanLevelCheckpoint.IsEmpty() {
-		return false
+		return nil
 	}
 	t.Logf("found checkpoint: %#v", spanLevelCheckpoint)
-	if cp != nil {
-		*cp = spanLevelCheckpoint
+	return spanLevelCheckpoint
+}
+
+// makeSpanGroupFromCheckpoint makes a span group containing all the spans
+// contained in a span-level checkpoint.
+func makeSpanGroupFromCheckpoint(
+	t *testing.T, checkpoint *jobspb.TimestampSpansMap,
+) roachpb.SpanGroup {
+	t.Helper()
+	var spanGroup roachpb.SpanGroup
+	for _, sp := range checkpoint.All() {
+		spanGroup.Add(sp...)
 	}
-	if spanGroup != nil {
-		for _, sp := range spanLevelCheckpoint.ToGoMap() {
-			spanGroup.Add(sp...)
-		}
-	}
-	return true
+	return spanGroup
 }
 
 func feed(

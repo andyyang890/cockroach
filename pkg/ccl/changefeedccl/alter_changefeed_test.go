@@ -1301,8 +1301,9 @@ func TestAlterChangefeedAddTargetsDuringSchemaChangeError(t *testing.T) {
 			if nextProgressCheck.IsZero() || nextProgressCheck.Before(timeutil.Now()) {
 				// Check if we've set a checkpoint yet
 				progress := loadProgress(t, jobFeed, jobRegistry)
-				if loadCheckpoint(t, progress, nil, &initialCheckpoint) {
+				if checkpoint := loadCheckpoint(t, progress); checkpoint != nil {
 					atomic.StoreInt32(&foundCheckpoint, 1)
+					initialCheckpoint = makeSpanGroupFromCheckpoint(t, checkpoint)
 				}
 				nextProgressCheck = timeutil.Now().Add(progressBackoff)
 			}
@@ -1466,8 +1467,8 @@ func TestAlterChangefeedAddTargetsDuringBackfill(t *testing.T) {
 		noHighWater := h == nil || h.IsEmpty()
 		require.True(t, noHighWater)
 
-		var checkpoint roachpb.SpanGroup
-		require.True(t, loadCheckpoint(t, progress, nil, &checkpoint))
+		checkpoint := makeSpanGroupFromCheckpoint(t, loadCheckpoint(t, progress))
+		require.Greater(t, checkpoint.Len(), 0)
 
 		sqlDB.Exec(t, fmt.Sprintf(`ALTER CHANGEFEED %d ADD bar WITH initial_scan`, jobFeed.JobID()))
 
@@ -1488,7 +1489,7 @@ func TestAlterChangefeedAddTargetsDuringBackfill(t *testing.T) {
 
 		// At this point, highwater mark should be set, and previous checkpoint should be gone.
 		progress = loadProgress(t, jobFeed, registry)
-		require.False(t, loadCheckpoint(t, progress, nil, nil))
+		require.Nil(t, loadCheckpoint(t, progress))
 
 		require.NoError(t, jobFeed.Pause())
 

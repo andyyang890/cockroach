@@ -1211,8 +1211,6 @@ message TimestampSpansMap {
     repeated roachpb.Span spans = 2 [(gogoproto.nullable) = false];
   }
   repeated Entry entries = 1 [(gogoproto.nullable) = false];
-
-  // NOTE: When adding fields to this message, make sure to also update IsEmpty.
 }
 
 message ChangefeedProgress {

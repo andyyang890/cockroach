@@ -42,7 +42,7 @@ func Make(
 		return nil
 	}
 
-	checkpointSpansMap := make(jobspb.TimestampSpansGoMap)
+	checkpointSpansMap := make(map[hlc.Timestamp]roachpb.Spans)
 	var totalSpanKeyBytes int64
 	for ts, spanGroup := range spanGroupMap {
 		for _, sp := range spanGroup.Slice() {
@@ -62,7 +62,7 @@ func Make(
 	if metrics != nil {
 		metrics.CreateNanos.RecordValue(int64(timeutil.Since(start)))
 		metrics.TotalBytes.RecordValue(int64(cp.Size()))
-		metrics.SpanCount.RecordValue(int64(checkpointSpansMap.SpanCount()))
+		metrics.SpanCount.RecordValue(int64(cp.SpanCount()))
 	}
 
 	return cp
@@ -75,7 +75,7 @@ type SpanForwarder interface {
 
 // Restore restores the saved progress from a checkpoint to the given SpanForwarder.
 func Restore(sf SpanForwarder, checkpoint *jobspb.TimestampSpansMap) error {
-	for ts, spans := range checkpoint.ToGoMap() {
+	for ts, spans := range checkpoint.All() {
 		if ts.IsEmpty() {
 			return errors.New("checkpoint timestamp is empty")
 		}
@@ -113,7 +113,7 @@ func ConvertFromLegacyCheckpoint(
 		}
 	}
 
-	return jobspb.NewTimestampSpansMap(jobspb.TimestampSpansGoMap{
+	return jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
 		checkpointTS: checkpoint.Spans,
 	})
 }
@@ -128,11 +128,9 @@ func ConvertToLegacyCheckpoint(
 		return nil
 	}
 
-	checkpointGoMap := checkpoint.ToGoMap()
-
 	// Collect leading spans into a SpanGroup to merge adjacent spans.
 	var checkpointSpanGroup roachpb.SpanGroup
-	for _, spans := range checkpointGoMap {
+	for _, spans := range checkpoint.All() {
 		checkpointSpanGroup.Add(spans...)
 	}
 	if checkpointSpanGroup.Len() == 0 {
@@ -142,6 +140,6 @@ func ConvertToLegacyCheckpoint(
 	//lint:ignore SA1019 deprecated usage
 	return &jobspb.ChangefeedProgress_Checkpoint{
 		Spans:     checkpointSpanGroup.Slice(),
-		Timestamp: checkpointGoMap.MinTimestamp(),
+		Timestamp: checkpoint.MinTimestamp(),
 	}
 }

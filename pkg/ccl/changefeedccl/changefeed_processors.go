@@ -1099,6 +1099,9 @@ func (cs *cachedState) SetHighwater(frontier hlc.Timestamp) {
 
 // SetCheckpoint implements the eval.ChangefeedState interface.
 func (cs *cachedState) SetCheckpoint(checkpoint *jobspb.TimestampSpansMap) {
+	// NB: It's not necessary to set the legacy checkpoint field because this
+	// copy of the checkpoint is only used in-memory on a coordinator node that
+	// knows about the new field.
 	cs.progress.Details.(*jobspb.Progress_Changefeed).Changefeed.SpanLevelCheckpoint = checkpoint
 }
 
