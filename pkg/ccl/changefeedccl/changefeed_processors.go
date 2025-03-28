@@ -77,6 +77,8 @@ type changeAggregator struct {
 	errCh chan error
 	// kvFeedDoneCh is closed when the kvfeed exits.
 	kvFeedDoneCh chan struct{}
+	// frontierDoneCh is closed when the frontier is done.
+	frontierDoneCh chan struct{}
 
 	// sink is the Sink to write rows to. Resolved timestamps are never written
 	// by changeAggregator.
@@ -307,7 +309,7 @@ const (
 	changeFrontierLogTag   = "change-frontier"
 )
 
-// Start is part of the RowSource interface.
+// Start is part of the execinfra.RowSource interface.
 func (ca *changeAggregator) Start(ctx context.Context) {
 	//log.Infof(ctx, "starting changefeed aggregator with context: %v", ctx.Err())
 
@@ -319,6 +321,7 @@ func (ca *changeAggregator) Start(ctx context.Context) {
 		log.Infof(ctx, "cancel is being called:\n%s", stack)
 		cancel()
 	}
+	ca.frontierDoneCh = make(chan struct{})
 
 	if ca.spec.JobID != 0 {
 		ctx = logtags.AddTag(ctx, "job", ca.spec.JobID)
@@ -724,7 +727,7 @@ func nextFlushWithJitter(s timeutil.TimeSource, d time.Duration, j float64) (tim
 	return s.Now().Add(nextFlush), nil
 }
 
-// Next is part of the RowSource interface.
+// Next is part of the execinfra.RowSource interface.
 func (ca *changeAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
 	shouldEmitHeartBeat := func() bool {
 		freq := aggregatorHeartbeatFrequency.Get(&ca.FlowCtx.Cfg.Settings.SV)
@@ -773,7 +776,11 @@ func (ca *changeAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMet
 				err = e.Unwrap()
 				log.Infof(ca.Ctx(), "err buffer closed: %v", err)
 				if errors.Is(err, kvevent.ErrNormalRestartReason) {
-					err = nil
+					// We should wait for the frontier to shut us down.
+					//continue
+					//err = nil
+					<-ca.frontierDoneCh
+					return nil, ca.DrainHelper()
 				}
 			} else {
 				// If the poller errored first, that's the
@@ -981,7 +988,13 @@ func (ca *changeAggregator) emitResolved(batch jobspb.ResolvedSpans) error {
 	return nil
 }
 
-// ConsumerClosed is part of the RowSource interface.
+// ConsumerDone is part of the execinfra.RowSource interface.
+func (ca *changeAggregator) ConsumerDone() {
+	close(ca.frontierDoneCh)
+	ca.MoveToDraining(nil /* err */)
+}
+
+// ConsumerClosed is part of the execinfra.RowSource interface.
 func (ca *changeAggregator) ConsumerClosed() {
 	// The consumer is done, Next() will not be called again.
 	ca.close()
@@ -1299,7 +1312,7 @@ func (cf *changeFrontier) MustBeStreaming() bool {
 	return true
 }
 
-// Start is part of the RowSource interface.
+// Start is part of the execinfra.RowSource interface.
 func (cf *changeFrontier) Start(ctx context.Context) {
 	if cf.spec.JobID != 0 {
 		ctx = logtags.AddTag(ctx, "job", cf.spec.JobID)
@@ -1539,7 +1552,7 @@ func (cf *changeFrontier) closeMetrics() {
 	cf.sliMetrics.closeId(cf.sliMetricsID)
 }
 
-// Next is part of the RowSource interface.
+// Next is part of the execinfra.RowSource interface.
 func (cf *changeFrontier) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMetadata) {
 	for cf.State == execinfra.StateRunning {
 		if !cf.passthroughBuf.IsEmpty() {
@@ -2013,7 +2026,7 @@ func slownessThreshold(sv *settings.Values) time.Duration {
 	return time.Second + 10*(pollInterval+closedtsInterval)
 }
 
-// ConsumerClosed is part of the RowSource interface.
+// ConsumerClosed is part of the execinfra.RowSource interface.
 func (cf *changeFrontier) ConsumerClosed() {
 	// The consumer is done, Next() will not be called again.
 	cf.close()
