@@ -7,7 +7,10 @@ package execinfra
 
 import (
 	"context"
+	"fmt"
 	"math"
+	"runtime/debug"
+	"strings"
 
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfrapb"
@@ -522,6 +525,12 @@ const (
 // An error can be optionally passed. It will be the first piece of metadata
 // returned by DrainHelper().
 func (pb *ProcessorBaseNoHelper) MoveToDraining(err error) {
+	typ := fmt.Sprintf("%T", pb.self)
+	if strings.HasPrefix(typ, "*changefeedccl") {
+		stack := debug.Stack()
+		log.Infof(pb.Ctx(), "MoveToDraining called for %s:\n%s", typ, stack)
+	}
+
 	if pb.State != StateRunning {
 		// Calling MoveToDraining in any state is allowed in order to facilitate the
 		// ConsumerDone() implementations that just call this unconditionally.
@@ -900,6 +909,12 @@ func ProcessorSpan(
 func (pb *ProcessorBaseNoHelper) StartInternal(
 	ctx context.Context, name string, eventListeners ...tracing.EventListener,
 ) context.Context {
+	//typ := fmt.Sprintf("%T", pb.self)
+	//if strings.HasPrefix(typ, "*changefeedccl") {
+	//	stack := debug.Stack()
+	//	log.Infof(pb.Ctx(), "StartInternal called for %s with context %v:\n%s", typ, ctx, stack)
+	//}
+
 	pb.origCtx = ctx
 	pb.ctx = ctx
 	noSpan := pb.FlowCtx != nil && pb.FlowCtx.Cfg != nil &&
@@ -930,6 +945,12 @@ func (pb *ProcessorBaseNoHelper) Ctx() context.Context {
 //	  // Perform processor specific close work.
 //	}
 func (pb *ProcessorBaseNoHelper) InternalClose() bool {
+	//typ := fmt.Sprintf("%T", pb.self)
+	//if strings.HasPrefix(typ, "*changefeedccl") {
+	//	stack := debug.Stack()
+	//	log.Infof(pb.Ctx(), "InternalClose called for %s:\n%s", typ, stack)
+	//}
+
 	// Protection around double closing is useful for allowing ConsumerClosed() to
 	// be called on processors that have already closed themselves by moving to
 	// StateTrailingMeta.

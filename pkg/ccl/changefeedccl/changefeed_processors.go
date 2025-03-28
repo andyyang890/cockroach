@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"iter"
 	"math/rand"
+	"runtime/debug"
 	"slices"
 	"sync"
 	"time"
@@ -308,8 +309,16 @@ const (
 
 // Start is part of the RowSource interface.
 func (ca *changeAggregator) Start(ctx context.Context) {
+	//log.Infof(ctx, "starting changefeed aggregator with context: %v", ctx.Err())
+
 	// Derive a separate context so that we can shutdown the poller.
-	ctx, ca.cancel = ca.FlowCtx.Stopper().WithCancelOnQuiesce(ctx)
+	ctx, cancel := ca.FlowCtx.Stopper().WithCancelOnQuiesce(ctx)
+	//log.Infof(ctx, "change aggregator new context: %v", ctx.Err())
+	ca.cancel = func() {
+		stack := debug.Stack()
+		log.Infof(ctx, "cancel is being called:\n%s", stack)
+		cancel()
+	}
 
 	if ca.spec.JobID != 0 {
 		ctx = logtags.AddTag(ctx, "job", ca.spec.JobID)
@@ -447,7 +456,11 @@ func (ca *changeAggregator) startKVFeed(
 	kvFeedMemMon := mon.NewMonitorInheritWithLimit(mon.MakeName("kvFeed"), memLimit, parentMemMon, false /* longLiving */)
 	kvFeedMemMon.StartNoReserved(ctx, parentMemMon)
 	buf := kvevent.NewThrottlingBuffer(
-		kvevent.NewMemBuffer(kvFeedMemMon.MakeBoundAccount(), &cfg.Settings.SV, &ca.metrics.KVFeedMetrics.AggregatorBufferMetricsWithCompat),
+		kvevent.NewMemBuffer(
+			kvFeedMemMon.MakeBoundAccount(), &cfg.Settings.SV,
+			&ca.metrics.KVFeedMetrics.AggregatorBufferMetricsWithCompat,
+			ca.knobs.FeedKnobs.FeedToAggregatorBufferKnobs,
+		),
 		cdcutils.NodeLevelThrottler(&cfg.Settings.SV, &ca.metrics.ThrottleMetrics))
 
 	// KVFeed takes ownership of the kvevent.Writer portion of the buffer, while
@@ -751,11 +764,14 @@ func (ca *changeAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMet
 			break
 		}
 
+		// TODO how do we get a tick before resolved messages?
 		if err := ca.tick(); err != nil {
+			log.Infof(ca.Ctx(), "tick error: %v", err)
 			var e kvevent.ErrBufferClosed
 			if errors.As(err, &e) {
 				// ErrBufferClosed is a signal that our kvfeed has exited expectedly.
 				err = e.Unwrap()
+				log.Infof(ca.Ctx(), "err buffer closed: %v", err)
 				if errors.Is(err, kvevent.ErrNormalRestartReason) {
 					err = nil
 				}
@@ -812,6 +828,12 @@ func (ca *changeAggregator) computeTrailingMetadata(meta *execinfrapb.Changefeed
 // kvFeed, sends off this event to the event consumer, and flushes the sink
 // if necessary.
 func (ca *changeAggregator) tick() error {
+	if ca.knobs.BeforeAggregatorTick != nil {
+		ca.knobs.BeforeAggregatorTick()
+	}
+
+	// TODO sleep here but only after resolved sent
+	//time.Sleep(2 * time.Second)
 	event, err := ca.eventProducer.Get(ca.Ctx())
 	if err != nil {
 		return err

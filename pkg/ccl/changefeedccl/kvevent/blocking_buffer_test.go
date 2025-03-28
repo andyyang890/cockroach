@@ -94,7 +94,7 @@ func TestBlockingBuffer(t *testing.T) {
 		}
 	}
 	st := cluster.MakeTestingClusterSettings()
-	buf := kvevent.TestingNewMemBuffer(ba, &st.SV, &metrics, notifyWait)
+	buf := kvevent.TestingNewMemBuffer(ba, &st.SV, &metrics, notifyWait, kvevent.BlockingBufferTestingKnobs{})
 
 	producerCtx, stopProducers := context.WithCancel(context.Background())
 	wg := ctxgroup.WithContext(producerCtx)
@@ -187,7 +187,7 @@ func TestBlockingBufferNotifiesConsumerWhenOutOfMemory(t *testing.T) {
 	defer release()
 
 	st := cluster.MakeTestingClusterSettings()
-	buf := kvevent.NewMemBuffer(ba, &st.SV, &metrics)
+	buf := kvevent.NewMemBuffer(ba, &st.SV, &metrics, kvevent.BlockingBufferTestingKnobs{})
 	defer func() {
 		require.NoError(t, buf.CloseWithReason(context.Background(), nil))
 	}()

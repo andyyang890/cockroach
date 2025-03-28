@@ -43,6 +43,8 @@ type blockingBuffer struct {
 		canFlush   bool
 		queue      *bufferEventChunkQueue // Queue of added events.
 	}
+
+	knobs BlockingBufferTestingKnobs
 }
 
 // NewMemBuffer returns a new in-memory buffer which will store events.
@@ -50,9 +52,12 @@ type blockingBuffer struct {
 // runs out of space. If ever any entry exceeds the allocatable size of the
 // account, an error will be returned when attempting to buffer it.
 func NewMemBuffer(
-	acc mon.BoundAccount, sv *settings.Values, metrics *PerBufferMetricsWithCompat,
+	acc mon.BoundAccount,
+	sv *settings.Values,
+	metrics *PerBufferMetricsWithCompat,
+	knobs BlockingBufferTestingKnobs,
 ) Buffer {
-	return newMemBuffer(acc, sv, metrics, nil)
+	return newMemBuffer(acc, sv, metrics, nil, knobs)
 }
 
 // TestingNewMemBuffer allows test to construct buffer which will invoked
@@ -62,8 +67,9 @@ func TestingNewMemBuffer(
 	sv *settings.Values,
 	metrics *PerBufferMetricsWithCompat,
 	onWaitStart quotapool.OnWaitStartFunc,
+	knobs BlockingBufferTestingKnobs,
 ) Buffer {
-	return newMemBuffer(acc, sv, metrics, onWaitStart)
+	return newMemBuffer(acc, sv, metrics, onWaitStart, knobs)
 }
 
 func newMemBuffer(
@@ -71,6 +77,7 @@ func newMemBuffer(
 	sv *settings.Values,
 	metrics *PerBufferMetricsWithCompat,
 	onWaitStart quotapool.OnWaitStartFunc,
+	knobs BlockingBufferTestingKnobs,
 ) Buffer {
 	const slowAcquisitionThreshold = 5 * time.Second
 
@@ -78,6 +85,7 @@ func newMemBuffer(
 		signalCh: make(chan struct{}, 1),
 		metrics:  metrics,
 		sv:       sv,
+		knobs:    knobs,
 	}
 	b.mu.queue = &bufferEventChunkQueue{}
 
@@ -114,10 +122,16 @@ func newMemBuffer(
 
 var _ Buffer = (*blockingBuffer)(nil)
 
+// TODO add more logging in here
 func (b *blockingBuffer) pop() (e Event, ok bool, err error) {
+	if b.knobs.BeforePop != nil {
+		b.knobs.BeforePop()
+	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.mu.closed {
+		log.Infof(context.Background(), "pop: buffer is closed")
+		// TODO this is the only place this error is returned
 		return Event{}, false, ErrBufferClosed{reason: b.mu.reason}
 	}
 
@@ -197,11 +211,14 @@ func (b *blockingBuffer) Get(ctx context.Context) (ev Event, err error) {
 
 		if ok {
 			b.metrics.BufferEntriesOut.Inc(1)
+			log.Infof(ctx, "blockingBuffer.Get got event %s", &got)
 			return got, nil
 		}
 
 		select {
+		// TODO who cancels this context?
 		case <-ctx.Done():
+			log.Infof(context.Background(), "select: %v", ctx.Err())
 			return Event{}, ctx.Err()
 		case <-b.signalCh:
 		}
@@ -345,6 +362,8 @@ func (b *blockingBuffer) CloseWithReason(ctx context.Context, reason error) erro
 
 	// Return all queued up entries to the buffer pool.
 	b.mu.queue.purge()
+
+	log.Infof(ctx, "blocking buffer closed with reason: %v", reason)
 
 	return nil
 }

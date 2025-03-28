@@ -52,7 +52,7 @@ func BenchmarkMemBuffer(b *testing.B) {
 	metrics := kvevent.MakeMetrics(time.Minute).AggregatorBufferMetricsWithCompat
 	st := cluster.MakeTestingClusterSettings()
 
-	buf := kvevent.NewMemBuffer(ba, &st.SV, &metrics)
+	buf := kvevent.NewMemBuffer(ba, &st.SV, &metrics, kvevent.BlockingBufferTestingKnobs{})
 	defer func() {
 		require.NoError(b, buf.CloseWithReason(context.Background(), nil))
 	}()

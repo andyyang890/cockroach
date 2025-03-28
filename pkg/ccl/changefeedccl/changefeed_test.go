@@ -3417,38 +3417,74 @@ func TestChangefeedEachColumnFamilySchemaChanges(t *testing.T) {
 
 	require.NoError(t, log.SetVModule("kv_feed=2,changefeed_processors=2"))
 
-	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
-		sqlDB := sqlutils.MakeSQLRunner(s.DB)
+	testutils.RunTrueAndFalse(t, "regression 141453", func(t *testing.T, regression141453 bool) {
+		testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
+			log.Infof(context.Background(), "regression14153: %t", regression141453)
+			// This is a regression test for #141453.
+			// We use the knobs to force the aggregator to close its kv feed writer
+			// before the frontier has a chance to receive the RESTART resolved spans.
+			// TODO(yang): Consider making this a helper function.
+			if regression141453 {
+				var wg sync.WaitGroup
+				knobs := s.TestingKnobs.
+					DistSQL.(*execinfra.TestingKnobs).
+					Changefeed.(*TestingKnobs)
+				knobs.FeedKnobs.BeforeBufferAdd = func(resolvedSpan jobspb.ResolvedSpan) {
+					if resolvedSpan.BoundaryType == jobspb.ResolvedSpan_RESTART {
+						log.Infof(context.Background(), "TESTING KNOB: BeforeBufferAdd called for RESTART")
+						wg.Add(1)
+					}
+				}
+				knobs.FeedKnobs.FeedToAggregatorBufferKnobs.BeforePop = func() {
+					log.Infof(context.Background(), "TESTING KNOB: BeforePop")
+					wg.Wait()
+				}
+				knobs.FeedKnobs.AfterWriterClose = func(reason error, closeErr error) {
+					log.Infof(context.Background(), "TESTING KNOB: AfterWriterClose called with reason (%v) and closeErr (%v)", reason, closeErr)
+					if closeErr == nil && errors.Is(reason, kvevent.ErrNormalRestartReason) {
+						wg.Done()
+					}
+				}
+				//knobs.BeforeAggregatorTick = func() {
+				//	t.Logf("BeforeAggregatorTick")
+				//	wg.Wait()
+				//}
+			}
 
-		_ = maybeDisableDeclarativeSchemaChangesForTest(t, sqlDB)
+			sqlDB := sqlutils.MakeSQLRunner(s.DB)
 
-		// Table with 2 column families.
-		sqlDB.Exec(t, `CREATE TABLE foo (a INT PRIMARY KEY, b STRING, c STRING, FAMILY f1 (a,b), FAMILY f2 (c))`)
-		sqlDB.Exec(t, `INSERT INTO foo values (0, 'dog', 'cat')`)
-		foo := feed(t, f, `CREATE CHANGEFEED FOR foo WITH split_column_families`)
-		defer closeFeed(t, foo)
-		assertPayloads(t, foo, []string{
-			`foo.f1: [0]->{"after": {"a": 0, "b": "dog"}}`,
-			`foo.f2: [0]->{"after": {"c": "cat"}}`,
-		})
+			//_ = maybeDisableDeclarativeSchemaChangesForTest(t, sqlDB)
 
-		// Add a column to an existing family
-		sqlDB.Exec(t, `ALTER TABLE foo ADD COLUMN d string DEFAULT 'hi' FAMILY f2`)
-		assertPayloads(t, foo, []string{
-			`foo.f2: [0]->{"after": {"c": "cat", "d": "hi"}}`,
-		})
+			// Table with 2 column families.
+			sqlDB.Exec(t, `CREATE TABLE foo (a INT PRIMARY KEY, b STRING, c STRING, FAMILY f1 (a,b), FAMILY f2 (c))`)
+			sqlDB.Exec(t, `INSERT INTO foo values (0, 'dog', 'cat')`)
+			foo := feed(t, f, `CREATE CHANGEFEED FOR foo WITH split_column_families`)
+			defer closeFeed(t, foo)
+			assertPayloads(t, foo, []string{
+				`foo.f1: [0]->{"after": {"a": 0, "b": "dog"}}`,
+				`foo.f2: [0]->{"after": {"c": "cat"}}`,
+			})
 
-		// Add a column to a new family.
-		// Behavior here is a little wonky with default values in a way
-		// that's likely to change with declarative schema changer,
-		// so not asserting anything either way about that.
-		sqlDB.Exec(t, `ALTER TABLE foo ADD COLUMN e string CREATE FAMILY f3`)
-		sqlDB.Exec(t, `UPDATE foo SET e='hello' WHERE a=0`)
-		assertPayloads(t, foo, []string{
-			`foo.f3: [0]->{"after": {"e": "hello"}}`,
-		})
-	}
-	cdcTest(t, testFn)
+			// Add a column to an existing family
+			sqlDB.Exec(t, `ALTER TABLE foo ADD COLUMN d string DEFAULT 'hi' FAMILY f2`)
+			assertPayloads(t, foo, []string{
+				`foo.f2: [0]->{"after": {"c": "cat", "d": "hi"}}`,
+			})
+
+			// Add a column to a new family.
+			// Behavior here is a little wonky with default values in a way
+			// that's likely to change with declarative schema changer,
+			// so not asserting anything either way about that.
+			sqlDB.Exec(t, `ALTER TABLE foo ADD COLUMN e string CREATE FAMILY f3`)
+			sqlDB.Exec(t, `UPDATE foo SET e='hello' WHERE a=0`)
+			assertPayloads(t, foo, []string{
+				`foo.f3: [0]->{"after": {"e": "hello"}}`,
+			})
+		}
+		cdcTest(t, testFn, feedTestForceSink("sinkless"))
+	})
+
+	//t.Fatalf("collect artifacts")
 }
 
 func TestCoreChangefeedRequiresSelectPrivilege(t *testing.T) {

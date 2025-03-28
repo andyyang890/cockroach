@@ -6,6 +6,8 @@
 package kvfeed
 
 import (
+	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/kvevent"
+	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/kv"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvclient/kvcoord"
 	"github.com/cockroachdb/cockroach/pkg/kv/kvpb"
@@ -28,6 +30,12 @@ type TestingKnobs struct {
 	EndTimeReached func() bool
 	// RangefeedOptions lets the kvfeed override rangefeed settings.
 	RangefeedOptions []kvcoord.RangeFeedOption
+	// TODO consider moving this to kvevent
+	BeforeBufferAdd func(jobspb.ResolvedSpan)
+	// AfterWriterClose is invoked when the writer is closed,
+	// with the error if applicable.
+	AfterWriterClose            func(reason error, closeErr error)
+	FeedToAggregatorBufferKnobs kvevent.BlockingBufferTestingKnobs
 }
 
 // ModuleTestingKnobs is part of the base.ModuleTestingKnobs interface.

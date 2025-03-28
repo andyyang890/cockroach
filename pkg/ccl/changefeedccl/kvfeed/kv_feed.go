@@ -124,7 +124,11 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	bf := func() kvevent.Buffer {
-		return kvevent.NewMemBuffer(cfg.MM.MakeBoundAccount(), &cfg.Settings.SV, &cfg.Metrics.RangefeedBufferMetricsWithCompat)
+		return kvevent.NewMemBuffer(
+			cfg.MM.MakeBoundAccount(), &cfg.Settings.SV,
+			&cfg.Metrics.RangefeedBufferMetricsWithCompat,
+			kvevent.BlockingBufferTestingKnobs{},
+		)
 	}
 
 	g := ctxgroup.WithContext(ctx)
@@ -142,6 +146,7 @@ func Run(ctx context.Context, cfg Config) error {
 	f.rangeObserver = startLaggingRangesObserver(g, cfg.MonitoringCfg.LaggingRangesCallback,
 		cfg.MonitoringCfg.LaggingRangesPollingInterval, cfg.MonitoringCfg.LaggingRangesThreshold)
 
+	// TODO maybe this isn't ending fast enough
 	g.GoCtx(cfg.SchemaFeed.Run)
 	g.GoCtx(f.run)
 	err := g.Wait()
@@ -172,17 +177,21 @@ func Run(ctx context.Context, cfg Config) error {
 	// Regardless of whether drain succeeds, we must also close the buffer to release
 	// any resources, and to let the consumer (changeAggregator) know that no more writes
 	// are expected so that it can transition to a draining state.
+	log.Infof(ctx, "kv feed closing writer")
 	err = errors.CombineErrors(
 		f.writer.Drain(ctx),
 		f.writer.CloseWithReason(ctx, kvevent.ErrNormalRestartReason),
 	)
 
 	if err == nil {
+		log.Infof(ctx, "kv feed waiting for context cancel")
 		// This context is canceled by the change aggregator when it receives
 		// an error reading from the Writer that was closed above.
 		<-ctx.Done()
 	}
 
+	// TODO this return value is actually not relevant, because the CloseWithReason doesn't create an error
+	log.Infof(ctx, "kv feed Run error: %v", err)
 	return err
 }
 
@@ -302,6 +311,15 @@ func newKVFeed(
 	ts *timers.ScopedTimers,
 	knobs TestingKnobs,
 ) *kvFeed {
+	// TODO fix this
+	if knobs.BeforeBufferAdd != nil {
+		writer = &testingWrappedWriter{
+			Writer:             writer,
+			beforeEmitResolved: knobs.BeforeBufferAdd,
+			afterWriterClose:   knobs.AfterWriterClose,
+		}
+	}
+
 	return &kvFeed{
 		writer:               writer,
 		spans:                spans,
@@ -330,16 +348,21 @@ var errChangefeedCompleted = errors.New("changefeed completed")
 
 func (f *kvFeed) run(ctx context.Context) (err error) {
 	log.Infof(ctx, "kv feed run starting")
+	defer func() {
+		log.Infof(ctx, "kv feed run completed: %v", err)
+	}()
 
 	emitResolved := func(ts hlc.Timestamp, boundary jobspb.ResolvedSpan_BoundaryType) error {
 		if log.V(2) {
 			log.Infof(ctx, "emitting resolved spans at time %s with boundary %s for spans: %s", ts, boundary, f.spans)
 		}
+		// TODO what if i make this multiple spans
 		for _, sp := range f.spans {
 			if err := f.writer.Add(ctx, kvevent.NewBackfillResolvedEvent(sp, ts, boundary)); err != nil {
 				return err
 			}
 		}
+		// TODO testing hook
 		return nil
 	}
 
@@ -888,4 +911,25 @@ func copyFromSourceToDestUntilTableEvent(
 			return err
 		}
 	}
+}
+
+type testingWrappedWriter struct {
+	kvevent.Writer
+	beforeEmitResolved func(jobspb.ResolvedSpan)
+	afterWriterClose   func(reason error, closeErr error)
+}
+
+func (w *testingWrappedWriter) Add(ctx context.Context, event kvevent.Event) error {
+	if event.Type() == kvevent.TypeResolved {
+		w.beforeEmitResolved(event.Resolved())
+	}
+	return w.Writer.Add(ctx, event)
+}
+
+func (w *testingWrappedWriter) CloseWithReason(ctx context.Context, reason error) error {
+	err := w.Writer.CloseWithReason(ctx, reason)
+	if w.afterWriterClose != nil {
+		w.afterWriterClose(reason, err)
+	}
+	return err
 }

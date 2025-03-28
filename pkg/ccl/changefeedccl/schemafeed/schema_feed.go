@@ -237,7 +237,11 @@ func (tf *schemaFeed) init() error {
 }
 
 // Run will run the SchemaFeed. It is an error to run a feed more than once.
-func (tf *schemaFeed) Run(ctx context.Context) error {
+func (tf *schemaFeed) Run(ctx context.Context) (err error) {
+	defer func() {
+		log.Infof(ctx, "schema feed run completed: %v", err)
+	}()
+
 	if err := tf.init(); err != nil {
 		return err
 	}
@@ -329,6 +333,7 @@ func (tf *schemaFeed) periodicallyMaybePollTableHistory(ctx context.Context) err
 
 		select {
 		case <-ctx.Done():
+			log.Infof(ctx, "schema feed context canceled")
 			return nil
 		case <-time.After(changefeedbase.TableDescriptorPollInterval.Get(&tf.settings.SV)):
 		}

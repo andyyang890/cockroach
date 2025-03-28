@@ -111,6 +111,8 @@ type TestingKnobs struct {
 
 	// OverrideCursorAge is used to change how old a cursor is. Returns time in nanoseconds.
 	OverrideCursorAge func() int64
+
+	BeforeAggregatorTick func()
 }
 
 // ModuleTestingKnobs is part of the base.ModuleTestingKnobs interface.
