@@ -178,10 +178,10 @@ func Run(ctx context.Context, cfg Config) error {
 	// any resources, and to let the consumer (changeAggregator) know that no more writes
 	// are expected so that it can transition to a draining state.
 	log.Infof(ctx, "kv feed closing writer")
-	err = errors.CombineErrors(
-		f.writer.Drain(ctx),
-		f.writer.CloseWithReason(ctx, kvevent.ErrNormalRestartReason),
-	)
+	err = f.writer.Drain(ctx)
+	if f.knobs.AfterWriterClose != nil {
+		f.knobs.AfterWriterClose(kvevent.ErrNormalRestartReason, err)
+	}
 
 	if err == nil {
 		log.Infof(ctx, "kv feed waiting for context cancel")

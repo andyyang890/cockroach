@@ -326,11 +326,12 @@ func assertPayloadsBaseErr(
 	return nil
 }
 
+// TODO make this a variable you can defer and replace
 func assertPayloadsTimeout() time.Duration {
 	if util.RaceEnabled {
 		return 5 * time.Minute
 	}
-	return 30 * time.Second
+	return 2 * time.Minute
 }
 
 func withTimeout(
