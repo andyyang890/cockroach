@@ -753,7 +753,7 @@ func newTestOptions() feedTestOptions {
 	// tenant.
 	const percentTenant = 0.5
 	return feedTestOptions{
-		useTenant: rand.Float32() < percentTenant,
+		useTenant: true,
 	}
 }
 

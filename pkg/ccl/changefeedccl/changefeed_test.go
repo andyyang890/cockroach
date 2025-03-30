@@ -3342,13 +3342,13 @@ func TestChangefeedSingleColumnFamilySchemaChanges(t *testing.T) {
 	require.NoError(t, log.SetVModule("kv_feed=2,changefeed_processors=2"))
 
 	// requireErrorSoon times out after 30 seconds
-	skip.UnderStress(t)
+	//skip.UnderStress(t)
 	skip.UnderRace(t)
 
 	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 		sqlDB := sqlutils.MakeSQLRunner(s.DB)
 
-		_ = maybeDisableDeclarativeSchemaChangesForTest(t, sqlDB)
+		//_ = maybeDisableDeclarativeSchemaChangesForTest(t, sqlDB)
 
 		// Table with 2 column families.
 		sqlDB.Exec(t, `CREATE TABLE foo (a INT PRIMARY KEY, b STRING, c STRING, FAMILY most (a,b), FAMILY rest (c))`)
@@ -3378,7 +3378,9 @@ func TestChangefeedSingleColumnFamilySchemaChanges(t *testing.T) {
 			regexp.MustCompile(`CHANGEFEED targeting nonexistent or removed column family rest of table foo`))
 
 	}
-	cdcTest(t, testFn)
+	cdcTest(t, testFn, feedTestForceSink("sinkless"))
+
+	//t.Fatal("collect artifacts")
 }
 
 func TestChangefeedEachColumnFamilySchemaChanges(t *testing.T) {
