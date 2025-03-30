@@ -724,7 +724,13 @@ func (ca *changeAggregator) Next() (rowenc.EncDatumRow, *execinfrapb.ProducerMet
 			return ca.ProcessRowHelper(ca.changedRowBuf.Pop()), nil
 		} else if !ca.resolvedSpanBuf.IsEmpty() {
 			ca.lastPush = timeutil.Now()
-			return ca.ProcessRowHelper(ca.resolvedSpanBuf.Pop()), nil
+			encDatum := ca.ProcessRowHelper(ca.resolvedSpanBuf.Pop())
+			var progressUpdate jobspb.ResolvedSpans
+			if err := protoutil.Unmarshal(encDatum[0].Datum.(*tree.DBytes).UnsafeBytes(), &progressUpdate); err != nil {
+				panic(err)
+			}
+			log.Infof(ca.Ctx(), "change aggregator popping resolved spans from buffer: %#v", progressUpdate)
+			return ca.ProcessRowHelper(encDatum), nil
 		} else if shouldEmitHeartBeat() {
 			// heartbeat is simply an attempt to push a row into process row helper.
 			// This mechanism allows coordinator to propagate shutdown information to
@@ -816,6 +822,7 @@ func (ca *changeAggregator) tick() error {
 	if err != nil {
 		return err
 	}
+	log.Infof(ca.Ctx(), "change aggregator tick event: %s", &event)
 
 	queuedNanos := timeutil.Since(event.BufferAddTimestamp()).Nanoseconds()
 	ca.metrics.QueueTimeNanos.Inc(queuedNanos)
@@ -860,6 +867,8 @@ func (ca *changeAggregator) flushBufferedEvents() error {
 // changeAggregator node to the changeFrontier node to allow the changeFrontier
 // to persist the overall changefeed's progress
 func (ca *changeAggregator) noteResolvedSpan(resolved jobspb.ResolvedSpan) (returnErr error) {
+	log.Infof(ca.Ctx(), "noteResolvedSpan: %#v", resolved)
+
 	if resolved.Timestamp.IsEmpty() {
 		// @0.0 resolved timestamps could come in from rangefeed checkpoint.
 		// When rangefeed starts running, it emits @0.0 resolved timestamp.
@@ -883,6 +892,9 @@ func (ca *changeAggregator) noteResolvedSpan(resolved jobspb.ResolvedSpan) (retu
 	}
 
 	forceFlush := resolved.BoundaryType != jobspb.ResolvedSpan_NONE
+	if forceFlush {
+		log.Infof(ca.Ctx(), "forceFlush=%t and advanced=%t", forceFlush, advanced)
+	}
 
 	// NB: if we miss flush window, and the flush frequency is fairly high (minutes),
 	// it might be a while before frontier advances again (particularly if
@@ -947,6 +959,7 @@ func (ca *changeAggregator) emitResolved(batch jobspb.ResolvedSpans) error {
 	if err != nil {
 		return err
 	}
+	log.Infof(ca.Ctx(), "change aggregator pushing resolved spans to buffer: %#v", progressUpdate)
 	ca.resolvedSpanBuf.Push(rowenc.EncDatumRow{
 		rowenc.EncDatum{Datum: tree.NewDBytes(tree.DBytes(updateBytes))},
 		rowenc.EncDatum{Datum: tree.DNull}, // topic
