@@ -1822,7 +1822,9 @@ func TestNoStopAfterNonTargetColumnDrop(t *testing.T) {
 		}
 	}
 
-	cdcTest(t, testFn)
+	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
+		cdcTest(t, testFn)
+	})
 }
 
 func TestChangefeedProjectionDelete(t *testing.T) {
@@ -2062,7 +2064,9 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 		})
 	}
 
-	cdcTest(t, testFn)
+	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
+		cdcTest(t, testFn)
+	})
 }
 
 func TestNoStopAfterNonTargetAddColumnWithBackfill(t *testing.T) {
@@ -2106,7 +2110,9 @@ func TestNoStopAfterNonTargetAddColumnWithBackfill(t *testing.T) {
 		}
 	}
 
-	cdcTest(t, testFn)
+	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
+		cdcTest(t, testFn)
+	})
 }
 
 func TestChangefeedExternalIODisabled(t *testing.T) {
@@ -2994,7 +3000,7 @@ func TestChangefeedSchemaChangeAllowBackfill(t *testing.T) {
 
 	require.NoError(t, log.SetVModule("kv_feed=2,changefeed_processors=2"))
 
-	testFn := func(t *testing.T, s TestServerWithSystem, f cdctest.TestFeedFactory) {
+	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 		sqlDB := sqlutils.MakeSQLRunner(s.DB)
 
 		// Expected semantics:
@@ -3025,7 +3031,7 @@ func TestChangefeedSchemaChangeAllowBackfill(t *testing.T) {
 				`add_column_def: [2]->{"after": {"a": 2}}`,
 			})
 			sqlDB.Exec(t, `ALTER TABLE add_column_def ADD COLUMN b STRING DEFAULT 'd'`)
-			ts := schematestutils.FetchDescVersionModificationTime(t, s.TestServer.Server, `d`, `public`, `add_column_def`, 7)
+			ts := schematestutils.FetchDescVersionModificationTime(t, s.Server, `d`, `public`, `add_column_def`, 7)
 			assertPayloads(t, addColumnDef, []string{
 				fmt.Sprintf(`add_column_def: [1]->{"after": {"a": 1, "b": "d"}, "updated": "%s"}`,
 					ts.AsOfSystemTime()),
@@ -3045,7 +3051,7 @@ func TestChangefeedSchemaChangeAllowBackfill(t *testing.T) {
 				`add_col_comp: [2]->{"after": {"a": 2, "b": 7}}`,
 			})
 			sqlDB.Exec(t, `ALTER TABLE add_col_comp ADD COLUMN c INT AS (a + 10) STORED`)
-			ts := schematestutils.FetchDescVersionModificationTime(t, s.TestServer.Server, `d`, `public`, `add_col_comp`, 7)
+			ts := schematestutils.FetchDescVersionModificationTime(t, s.Server, `d`, `public`, `add_col_comp`, 7)
 			assertPayloads(t, addColComp, []string{
 				fmt.Sprintf(`add_col_comp: [1]->{"after": {"a": 1, "b": 6, "c": 11}, "updated": "%s"}`,
 					ts.AsOfSystemTime()),
@@ -3065,7 +3071,7 @@ func TestChangefeedSchemaChangeAllowBackfill(t *testing.T) {
 				`drop_column: [2]->{"after": {"a": 2, "b": "2"}}`,
 			})
 			sqlDB.Exec(t, `ALTER TABLE drop_column DROP COLUMN b`)
-			ts := schematestutils.FetchDescVersionModificationTime(t, s.TestServer.Server, `d`, `public`, `drop_column`, 2)
+			ts := schematestutils.FetchDescVersionModificationTime(t, s.Server, `d`, `public`, `drop_column`, 2)
 
 			// Backfill for DROP COLUMN b.
 			assertPayloads(t, dropColumn, []string{
@@ -3118,9 +3124,9 @@ func TestChangefeedSchemaChangeAllowBackfill(t *testing.T) {
 			// the 7th step (version 15). Finally, when adding column d, it goes from 17->25 ith the schema change
 			// being visible at the 7th step (version 23).
 			// TODO(#142936): Investigate if this descriptor version hardcoding is sound.
-			dropTS := schematestutils.FetchDescVersionModificationTime(t, s.TestServer.Server, `d`, `public`, `multiple_alters`, 2)
-			addTS := schematestutils.FetchDescVersionModificationTime(t, s.TestServer.Server, `d`, `public`, `multiple_alters`, 15)
-			addTS2 := schematestutils.FetchDescVersionModificationTime(t, s.TestServer.Server, `d`, `public`, `multiple_alters`, 23)
+			dropTS := schematestutils.FetchDescVersionModificationTime(t, s.Server, `d`, `public`, `multiple_alters`, 2)
+			addTS := schematestutils.FetchDescVersionModificationTime(t, s.Server, `d`, `public`, `multiple_alters`, 15)
+			addTS2 := schematestutils.FetchDescVersionModificationTime(t, s.Server, `d`, `public`, `multiple_alters`, 23)
 
 			assertPayloads(t, multipleAlters, []string{
 				fmt.Sprintf(`multiple_alters: [1]->{"after": {"a": 1}, "updated": "%s"}`, dropTS.AsOfSystemTime()),
@@ -3133,7 +3139,9 @@ func TestChangefeedSchemaChangeAllowBackfill(t *testing.T) {
 		})
 	}
 
-	cdcTestWithSystem(t, testFn)
+	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
+		cdcTest(t, testFn)
+	})
 
 	log.FlushFiles()
 	entries, err := log.FetchEntriesFromFiles(0, math.MaxInt64, 1,
@@ -3405,9 +3413,11 @@ func TestChangefeedSingleColumnFamilySchemaChanges(t *testing.T) {
 		waitForSchemaChange(t, sqlDB, `ALTER TABLE foo DROP column c`)
 		requireErrorSoon(context.Background(), t, fooRest,
 			regexp.MustCompile(`CHANGEFEED targeting nonexistent or removed column family rest of table foo`))
-
 	}
-	cdcTest(t, testFn)
+
+	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
+		cdcTest(t, testFn)
+	})
 }
 
 func TestChangefeedEachColumnFamilySchemaChanges(t *testing.T) {
@@ -3447,7 +3457,10 @@ func TestChangefeedEachColumnFamilySchemaChanges(t *testing.T) {
 			`foo.f3: [0]->{"after": {"e": "hello"}}`,
 		})
 	}
-	cdcTest(t, testFn)
+
+	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
+		cdcTest(t, testFn)
+	})
 }
 
 func TestCoreChangefeedRequiresSelectPrivilege(t *testing.T) {
@@ -9865,7 +9878,9 @@ func TestSchemachangeDoesNotBreakSinklessFeed(t *testing.T) {
 		})
 	}
 
-	cdcTest(t, testFn, feedTestForceSink("sinkless"))
+	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
+		cdcTest(t, testFn, feedTestForceSink("sinkless"))
+	})
 }
 
 func TestChangefeedKafkaMessageTooLarge(t *testing.T) {
@@ -11018,4 +11033,70 @@ func assertReasonableMVCCTimestamp(t *testing.T, ts string) {
 	epochNanos := parseTimeToHLC(t, ts).WallTime
 	now := timeutil.Now()
 	require.GreaterOrEqual(t, epochNanos, now.Add(-1*time.Hour).UnixNano())
+}
+
+// runWithAndWithoutRegression141453 runs the test both with and without testing
+// knobs that simulate the scenario where a change aggregator encounters a schema
+// change restart but draining the buffer fails so the restart resolved spans message
+// doesn't get sent to the change frontier.
+// TODO(yang): Consider adding this as something that's randomly enabled on any
+// changefeed unit test that uses cdcTest{,Named,WithSystem,NamedWithSystem}.
+func runWithAndWithoutRegression141453(
+	t *testing.T, testFn cdcTestFn, runTestFn func(t *testing.T, testFn cdcTestFn),
+) {
+	testutils.RunTrueAndFalse(t, "regression 141453",
+		func(t *testing.T, regression141453 bool) {
+			testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
+				if !regression141453 {
+					testFn(t, s, f)
+					return
+				}
+
+				knobs := s.TestingKnobs.
+					DistSQL.(*execinfra.TestingKnobs).
+					Changefeed.(*TestingKnobs)
+
+				// We only want to make drain fail once, otherwise the test will never
+				// be able to proceed.
+				var drainFailedOnce atomic.Bool
+				knobs.MakeKVFeedToAggregatorBufferKnobs = func() kvevent.BlockingBufferTestingKnobs {
+					if drainFailedOnce.Load() {
+						return kvevent.BlockingBufferTestingKnobs{}
+					}
+					var blockPop atomic.Bool
+					popCh := make(chan struct{})
+					return kvevent.BlockingBufferTestingKnobs{
+						BeforeAdd: func(ctx context.Context, e kvevent.Event) (context.Context, kvevent.Event) {
+							if e.Type() == kvevent.TypeResolved &&
+								e.Resolved().BoundaryType == jobspb.ResolvedSpan_RESTART {
+								blockPop.Store(true)
+							}
+							return ctx, e
+						},
+						BeforePop: func() {
+							if blockPop.Load() {
+								<-popCh
+							}
+						},
+						BeforeDrain: func(ctx context.Context) context.Context {
+							ctx, cancel := context.WithCancel(ctx)
+							cancel()
+							return ctx
+						},
+						AfterDrain: func(err error) {
+							require.Error(t, err)
+							drainFailedOnce.Store(true)
+						},
+						AfterCloseWithReason: func(err error) {
+							require.NoError(t, err)
+							close(popCh)
+							blockPop.Store(false)
+						},
+					}
+				}
+				testFn(t, s, f)
+			}
+
+			runTestFn(t, testFn)
+		})
 }
