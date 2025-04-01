@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdctest"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/kcjsonschema"
+	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/kvevent"
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/multiregionccl" // allow locality-related mutations
 	"github.com/cockroachdb/cockroach/pkg/ccl/multiregionccl/multiregionccltestutils"
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/partitionccl"
@@ -1314,6 +1316,7 @@ func cdcTestNamedWithSystem(
 		defer cleanupSink()
 		defer cleanupCloudStorage()
 
+		testFn = maybeRunWithRegression141453TestingKnobs(t, testFn)
 		testFn(t, testServer, feedFactory)
 	})
 }
@@ -1628,4 +1631,63 @@ func checkSchema(actual []cdctest.TestFeedMessage) error {
 		}
 	}
 	return nil
+}
+
+// maybeRunWithRegression141453TestingKnobs runs the test with testing knobs
+// that simulate the scenario where a change aggregator encounters a schema
+// change restart but draining the buffer fails so the resolved spans message
+// signaling the restart doesn't get sent to the change frontier.
+func maybeRunWithRegression141453TestingKnobs(
+	t testing.TB, testFn cdcTestWithSystemFn,
+) cdcTestWithSystemFn {
+	// TODO(yang): Change this to < 0.9.
+	if rand.Float32() < 0.01 {
+		return testFn
+	}
+	t.Logf("using regression 141453 testing knobs")
+	return func(t *testing.T, s TestServerWithSystem, f cdctest.TestFeedFactory) {
+		knobs := s.TestingKnobs.
+			DistSQL.(*execinfra.TestingKnobs).
+			Changefeed.(*TestingKnobs)
+
+		// We only want to make drain fail once, otherwise the test will never
+		// be able to proceed.
+		var drainFailedOnce atomic.Bool
+		knobs.MakeKVFeedToAggregatorBufferKnobs = func() kvevent.BlockingBufferTestingKnobs {
+			if drainFailedOnce.Load() {
+				return kvevent.BlockingBufferTestingKnobs{}
+			}
+			var blockPop atomic.Bool
+			popCh := make(chan struct{})
+			return kvevent.BlockingBufferTestingKnobs{
+				BeforeAdd: func(ctx context.Context, e kvevent.Event) (context.Context, kvevent.Event) {
+					if e.Type() == kvevent.TypeResolved &&
+						e.Resolved().BoundaryType == jobspb.ResolvedSpan_RESTART {
+						blockPop.Store(true)
+					}
+					return ctx, e
+				},
+				BeforePop: func() {
+					if blockPop.Load() {
+						<-popCh
+					}
+				},
+				BeforeDrain: func(ctx context.Context) context.Context {
+					ctx, cancel := context.WithCancel(ctx)
+					cancel()
+					return ctx
+				},
+				AfterDrain: func(err error) {
+					require.Error(t, err)
+					drainFailedOnce.Store(true)
+				},
+				AfterCloseWithReason: func(err error) {
+					require.NoError(t, err)
+					close(popCh)
+					blockPop.Store(false)
+				},
+			}
+		}
+		testFn(t, s, f)
+	}
 }

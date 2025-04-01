@@ -1822,9 +1822,7 @@ func TestNoStopAfterNonTargetColumnDrop(t *testing.T) {
 		}
 	}
 
-	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn)
-	})
+	cdcTest(t, testFn)
 }
 
 func TestChangefeedProjectionDelete(t *testing.T) {
@@ -2064,9 +2062,7 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 		})
 	}
 
-	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn)
-	})
+	cdcTest(t, testFn)
 }
 
 func TestNoStopAfterNonTargetAddColumnWithBackfill(t *testing.T) {
@@ -2110,9 +2106,7 @@ func TestNoStopAfterNonTargetAddColumnWithBackfill(t *testing.T) {
 		}
 	}
 
-	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn)
-	})
+	cdcTest(t, testFn)
 }
 
 func TestChangefeedExternalIODisabled(t *testing.T) {
@@ -3139,9 +3133,7 @@ func TestChangefeedSchemaChangeAllowBackfill(t *testing.T) {
 		})
 	}
 
-	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn)
-	})
+	cdcTest(t, testFn)
 
 	log.FlushFiles()
 	entries, err := log.FetchEntriesFromFiles(0, math.MaxInt64, 1,
@@ -3415,9 +3407,7 @@ func TestChangefeedSingleColumnFamilySchemaChanges(t *testing.T) {
 			regexp.MustCompile(`CHANGEFEED targeting nonexistent or removed column family rest of table foo`))
 	}
 
-	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn)
-	})
+	cdcTest(t, testFn)
 }
 
 func TestChangefeedEachColumnFamilySchemaChanges(t *testing.T) {
@@ -3458,9 +3448,7 @@ func TestChangefeedEachColumnFamilySchemaChanges(t *testing.T) {
 		})
 	}
 
-	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn)
-	})
+	cdcTest(t, testFn)
 }
 
 func TestCoreChangefeedRequiresSelectPrivilege(t *testing.T) {
@@ -9878,9 +9866,7 @@ func TestSchemachangeDoesNotBreakSinklessFeed(t *testing.T) {
 		})
 	}
 
-	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn, feedTestForceSink("sinkless"))
-	})
+	cdcTest(t, testFn, feedTestForceSink("sinkless"))
 }
 
 func TestChangefeedKafkaMessageTooLarge(t *testing.T) {
@@ -11033,70 +11019,4 @@ func assertReasonableMVCCTimestamp(t *testing.T, ts string) {
 	epochNanos := parseTimeToHLC(t, ts).WallTime
 	now := timeutil.Now()
 	require.GreaterOrEqual(t, epochNanos, now.Add(-1*time.Hour).UnixNano())
-}
-
-// runWithAndWithoutRegression141453 runs the test both with and without testing
-// knobs that simulate the scenario where a change aggregator encounters a schema
-// change restart but draining the buffer fails so the restart resolved spans message
-// doesn't get sent to the change frontier.
-// TODO(yang): Consider adding this as something that's randomly enabled on any
-// changefeed unit test that uses cdcTest{,Named,WithSystem,NamedWithSystem}.
-func runWithAndWithoutRegression141453(
-	t *testing.T, testFn cdcTestFn, runTestFn func(t *testing.T, testFn cdcTestFn),
-) {
-	testutils.RunTrueAndFalse(t, "regression 141453",
-		func(t *testing.T, regression141453 bool) {
-			testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
-				if !regression141453 {
-					testFn(t, s, f)
-					return
-				}
-
-				knobs := s.TestingKnobs.
-					DistSQL.(*execinfra.TestingKnobs).
-					Changefeed.(*TestingKnobs)
-
-				// We only want to make drain fail once, otherwise the test will never
-				// be able to proceed.
-				var drainFailedOnce atomic.Bool
-				knobs.MakeKVFeedToAggregatorBufferKnobs = func() kvevent.BlockingBufferTestingKnobs {
-					if drainFailedOnce.Load() {
-						return kvevent.BlockingBufferTestingKnobs{}
-					}
-					var blockPop atomic.Bool
-					popCh := make(chan struct{})
-					return kvevent.BlockingBufferTestingKnobs{
-						BeforeAdd: func(ctx context.Context, e kvevent.Event) (context.Context, kvevent.Event) {
-							if e.Type() == kvevent.TypeResolved &&
-								e.Resolved().BoundaryType == jobspb.ResolvedSpan_RESTART {
-								blockPop.Store(true)
-							}
-							return ctx, e
-						},
-						BeforePop: func() {
-							if blockPop.Load() {
-								<-popCh
-							}
-						},
-						BeforeDrain: func(ctx context.Context) context.Context {
-							ctx, cancel := context.WithCancel(ctx)
-							cancel()
-							return ctx
-						},
-						AfterDrain: func(err error) {
-							require.Error(t, err)
-							drainFailedOnce.Store(true)
-						},
-						AfterCloseWithReason: func(err error) {
-							require.NoError(t, err)
-							close(popCh)
-							blockPop.Store(false)
-						},
-					}
-				}
-				testFn(t, s, f)
-			}
-
-			runTestFn(t, testFn)
-		})
 }
