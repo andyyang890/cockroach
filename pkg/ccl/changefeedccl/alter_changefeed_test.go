@@ -9,8 +9,11 @@ import (
 	"context"
 	gosql "database/sql"
 	"fmt"
+	"maps"
 	"math/rand"
 	"net/url"
+	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1768,4 +1771,210 @@ func TestAlterChangefeedAccessControl(t *testing.T) {
 
 	// Only enterprise sinks create jobs.
 	cdcTest(t, testFn, feedTestEnterpriseSinks)
+}
+
+// TestAlterChangefeedAddDropSameTarget tests adding and dropping the same
+// target multiple times in a statement.
+func TestAlterChangefeedAddDropSameTarget(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
+		sqlDB := sqlutils.MakeSQLRunner(s.DB)
+		sqlDB.Exec(t, `CREATE TABLE foo (a INT PRIMARY KEY)`)
+		sqlDB.Exec(t, `CREATE TABLE bar (a INT PRIMARY KEY)`)
+
+		testFeed := feed(t, f, `CREATE CHANGEFEED FOR foo`)
+		defer closeFeed(t, testFeed)
+
+		feed, ok := testFeed.(cdctest.EnterpriseTestFeed)
+		require.True(t, ok)
+
+		// Test removing and adding the same target.
+		require.NoError(t, feed.Pause())
+		sqlDB.Exec(t, fmt.Sprintf(`ALTER CHANGEFEED %d DROP foo ADD foo`, feed.JobID()))
+		require.NoError(t, feed.Resume())
+		sqlDB.Exec(t, `INSERT INTO foo VALUES(1)`)
+		assertPayloads(t, testFeed, []string{
+			`foo: [1]->{"after": {"a": 1}}`,
+		})
+
+		// Test adding and removing the same target.
+		require.NoError(t, feed.Pause())
+		sqlDB.Exec(t, fmt.Sprintf(`ALTER CHANGEFEED %d ADD bar DROP bar`, feed.JobID()))
+		require.NoError(t, feed.Resume())
+		var tsStr string
+		sqlDB.QueryRow(t, `INSERT INTO bar VALUES(1)`)
+		sqlDB.QueryRow(t, `INSERT INTO foo VALUES(2) RETURNING cluster_logical_timestamp()`).Scan(&tsStr)
+		ts := parseTimeToHLC(t, tsStr)
+		require.NoError(t, feed.WaitForHighWaterMark(ts))
+		// We don't expect to see the row inserted into bar.
+		assertPayloads(t, testFeed, []string{
+			`foo: [2]->{"after": {"a": 2}}`,
+		})
+
+		// Test adding, removing, and adding the same target.
+		require.NoError(t, feed.Pause())
+		sqlDB.Exec(t, fmt.Sprintf(
+			`ALTER CHANGEFEED %d ADD bar DROP bar ADD bar WITH initial_scan='yes'`, feed.JobID()))
+		require.NoError(t, feed.Resume())
+		sqlDB.Exec(t, `INSERT INTO bar VALUES(2)`)
+		assertPayloads(t, testFeed, []string{
+			// TODO(#144032): This row should be produced.
+			//`bar: [1]->{"after": {"a": 1}}`,
+			`bar: [2]->{"after": {"a": 2}}`,
+		})
+	}
+
+	cdcTest(t, testFn, feedTestEnterpriseSinks, feedTestNoExternalConnection)
+}
+
+// TestAlterChangefeedRandomizedTargetChanges tests altering a changefeed
+// with randomized adding and dropping of targets.
+func TestAlterChangefeedRandomizedTargetChanges(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	rnd, _ := randutil.NewPseudoRand()
+
+	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
+		sqlDB := sqlutils.MakeSQLRunner(s.DB)
+
+		// The tables in this test will have the rows 0, ..., tableRowCounts[tableName]-1.
+		tables := make(map[string]struct{})
+		tableRowCounts := make(map[string]int)
+
+		insertRowsIntoTable := func(tableName string, numRows int) {
+			for range numRows {
+				sqlDB.Exec(t,
+					fmt.Sprintf(`INSERT INTO %s VALUES (%d)`, tableName, tableRowCounts[tableName]))
+				tableRowCounts[tableName] += 1
+			}
+		}
+
+		// Create [2, 10] tables with a single row to start.
+		numTables := 2 + rnd.Intn(9)
+		t.Logf("creating %d tables", numTables)
+		for i := range numTables {
+			tableName := fmt.Sprintf("table%d", i)
+			sqlDB.Exec(t, fmt.Sprintf(`CREATE TABLE %s (a INT PRIMARY KEY)`, tableName))
+			tables[tableName] = struct{}{}
+			insertRowsIntoTable(tableName, 1 /* numRows */)
+		}
+
+		// makeInitialScanRows returns the expected initial scan rows assuming
+		// every row in the table will be included in the initial scan.
+		makeInitialScanRows := func(newTables []string) []string {
+			var rows []string
+			for _, t := range newTables {
+				for i := range tableRowCounts[t] {
+					rows = append(rows, fmt.Sprintf(`%s: [%[2]d]->{"after": {"a": %[2]d}}`, t, i))
+				}
+			}
+			return rows
+		}
+
+		// TODO another function that starts at an index
+
+		// Randomly select some subset of tables to be the initial changefeed targets.
+		watchedTables := make(map[string]struct{})
+		for tbl := range tables {
+			if len(watchedTables) == 0 || rnd.Intn(3) == 0 {
+				watchedTables[tbl] = struct{}{}
+			}
+		}
+		nonWatchedTables := setDifference(tables, watchedTables)
+
+		// Create the changefeed.
+		initialTables := slices.Collect(maps.Keys(watchedTables))
+		testFeed := feed(t, f,
+			fmt.Sprintf(`CREATE CHANGEFEED FOR %s`, strings.Join(initialTables, ", ")))
+		defer closeFeed(t, testFeed)
+
+		feed, ok := testFeed.(cdctest.EnterpriseTestFeed)
+		require.True(t, ok)
+
+		assertPayloads(t, testFeed, makeInitialScanRows(initialTables))
+
+		numAlters := 1 // 1 + rnd.Intn(5)
+		t.Logf("performing %d alters", numAlters)
+		for i := range numAlters {
+			t.Logf("performing alter #%d", i+1)
+			require.NoError(t, feed.Pause())
+
+			var alterStmtBuilder strings.Builder
+			write := func(format string, args ...any) {
+				_, err := fmt.Fprintf(&alterStmtBuilder, format, args...)
+				require.NoError(t, err)
+			}
+			write(`ALTER CHANGEFEED %d`, feed.JobID())
+			//expectedRows := make(map[string]int)
+			numChanges := 1 + rnd.Intn(5)
+			for range numChanges {
+				switch rnd.Intn(2) {
+				case 0:
+					// Add a new target.
+					addTarget := getOneFromSet(nonWatchedTables)
+					if addTarget == "" {
+						// No tables left to add.
+						continue
+					}
+					write(`ADD %s`, addTarget)
+					switch rnd.Intn(4) {
+					case 0:
+						write(` WITH initial_scan='yes'`)
+					case 1:
+						write(` WITH initial_scan='only'`)
+					case 2:
+						write(` WITH initial_scan='no'`)
+						fallthrough
+					case 3:
+
+					}
+					// TODO rng for the initial_scan
+				case 1:
+					// Drop a target.
+					dropTarget := getOneFromSet(watchedTables)
+					require.NotEmpty(t, dropTarget)
+					if len(watchedTables) == 1 {
+						// Can't drop all targets.
+						continue
+					}
+					write(`DROP %s`, dropTarget)
+					delete(watchedTables, dropTarget)
+					nonWatchedTables[dropTarget] = struct{}{}
+					// Insert some more rows into the table. They should NOT be emitted by the changefeed.
+					insertRowsIntoTable(dropTarget, 3 /* numRows */)
+				}
+
+				alterStmt := alterStmtBuilder.String()
+				t.Logf("alter changefeed stmt: %s", alterStmt)
+			}
+
+			// OR could use cluster logical time to make sure resolved advances past
+			// TODO maybe insert some more rows into all watched tables.
+			// TODO need to keep track of new tables too.
+		}
+	}
+
+	cdcTest(t, testFn, feedTestEnterpriseSinks, feedTestNoExternalConnection)
+}
+
+// setDifference returns a new set that is s - t.
+func setDifference(s map[string]struct{}, t map[string]struct{}) map[string]struct{} {
+	difference := make(map[string]struct{})
+	for e := range s {
+		if _, ok := t[e]; !ok {
+			difference[e] = struct{}{}
+		}
+	}
+	return difference
+}
+
+// getOneFromSet returns a random element from s.
+func getOneFromSet(s map[string]struct{}) string {
+	for e := range s {
+		return e
+	}
+	return ""
 }
