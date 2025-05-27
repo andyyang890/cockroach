@@ -124,7 +124,7 @@ func ConvertFromLegacyCheckpoint(
 func ConvertToLegacyCheckpoint(
 	checkpoint *jobspb.TimestampSpansMap,
 ) *jobspb. //lint:ignore SA1019 deprecated usage
-		ChangefeedProgress_Checkpoint {
+						ChangefeedProgress_Checkpoint {
 	if checkpoint.IsEmpty() {
 		return nil
 	}
