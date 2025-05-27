@@ -6,6 +6,8 @@
 package changefeedccl
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	gosql "database/sql"
 	"encoding/base64"
@@ -105,6 +107,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 	"github.com/dustin/go-humanize"
+	"github.com/klauspost/compress/zstd"
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -11618,4 +11621,141 @@ func TestCloudstorageParallelCompression(t *testing.T) {
 			time.Sleep(checkStatusInterval)
 		}
 	})
+}
+
+func TestCheckpointSize(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	ctx := context.Background()
+	rand, _ := randutil.NewTestRand()
+
+	s, db, _ := serverutils.StartServer(t, base.TestServerArgs{
+		DefaultTestTenant: base.TODOTestTenantDisabled,
+	})
+	defer s.Stopper().Stop(ctx)
+	sqlDB := sqlutils.MakeSQLRunner(db)
+	sqlDB.ExecMultiple(t,
+		"CREATE TABLE t (x int PRIMARY KEY NOT NULL, a int, b int)",
+		"INSERT INTO t SELECT * FROM generate_series(1, 10000)",
+		"ALTER TABLE t split AT SELECT * FROM generate_series(1, 10000)",
+	)
+
+	var spans roachpb.Spans
+	rows := sqlDB.Query(t, "SELECT raw_start_key, raw_end_key FROM [SHOW RANGES FROM TABLE t WITH KEYS]")
+	for rows.Next() {
+		var start, end roachpb.Key
+		require.NoError(t, rows.Scan(&start, &end))
+		spans = append(spans, roachpb.Span{Key: start, EndKey: end})
+	}
+
+	generateTimestamps := func(
+		n int,
+		baseTime hlc.Timestamp,
+		numDiffTimestamps int64,
+	) []hlc.Timestamp {
+		timestamps := make([]hlc.Timestamp, n)
+		for i := range timestamps {
+			timestamps[i] = baseTime.Add(randutil.RandInt63InRange(rand, 1, numDiffTimestamps), 0)
+		}
+		return timestamps
+	}
+
+	calculateCheckpointSize := func(
+		name string,
+		spans roachpb.Spans,
+		baseTime hlc.Timestamp,
+		timestamps []hlc.Timestamp,
+	) {
+		f, err := span.MakeFrontierAt(baseTime, spans...)
+		require.NoError(t, err)
+
+		if len(timestamps) != 0 {
+			for i, sp := range spans {
+				_, err := f.Forward(sp, timestamps[i])
+				require.NoError(t, err)
+			}
+		}
+
+		cp1 := checkpoint.Make(hlc.Timestamp{}, f.Entries(), 1<<20, nil)
+		cp2 := checkpoint.Make2(hlc.Timestamp{}, f.Entries(), 1<<20, nil)
+
+		bytes1, err := protoutil.Marshal(cp1)
+		require.NoError(t, err)
+		bytes2, err := protoutil.Marshal(cp2)
+		require.NoError(t, err)
+
+		gzipCompress := func(buf []byte) []byte {
+			gzipBuf := bytes.NewBuffer([]byte{})
+			gz := gzip.NewWriter(gzipBuf)
+			if _, err := gz.Write(buf); err != nil {
+				require.NoError(t, err)
+			}
+			if err := gz.Close(); err != nil {
+				require.NoError(t, err)
+			}
+			return gzipBuf.Bytes()
+		}
+
+		gzipCompressedBytes1 := gzipCompress(bytes1)
+		gzipCompressedBytes2 := gzipCompress(bytes2)
+
+		zstdCompress := func(buf []byte) []byte {
+			zstdBuf := bytes.NewBuffer([]byte{})
+			z, err := zstd.NewWriter(zstdBuf)
+			require.NoError(t, err)
+			if _, err := z.Write(buf); err != nil {
+				require.NoError(t, err)
+			}
+			if err := z.Close(); err != nil {
+				require.NoError(t, err)
+			}
+			return zstdBuf.Bytes()
+		}
+
+		zstdCompressedBytes1 := zstdCompress(bytes1)
+		zstdCompressedBytes2 := zstdCompress(bytes2)
+
+		t.Logf(`scenario %s:
+    size of normal checkpoint: %s (gzip compressed %s, zstd compressed %s)
+    size of horizontally-tiled checkpoint: %s (gzip compressed %s, zstd compressed %s)
+
+`, name,
+			humanize.Bytes(uint64(len(bytes1))), humanize.Bytes(uint64(len(gzipCompressedBytes1))), humanize.Bytes(uint64(len(zstdCompressedBytes1))),
+			humanize.Bytes(uint64(len(bytes2))), humanize.Bytes(uint64(len(gzipCompressedBytes2))), humanize.Bytes(uint64(len(zstdCompressedBytes2))),
+		)
+	}
+
+	clock := hlc.NewClockForTesting(nil)
+	now := clock.Now()
+
+	//calculateCheckpointSize("timestamps are all the same",
+	//	spans,
+	//	now,
+	//	nil,
+	//)
+
+	calculateCheckpointSize("5 unique timestamps",
+		spans,
+		now,
+		generateTimestamps(len(spans), now, 5),
+	)
+
+	calculateCheckpointSize("10 unique timestamps",
+		spans,
+		now,
+		generateTimestamps(len(spans), now, 10),
+	)
+
+	calculateCheckpointSize("100 unique timestamps",
+		spans,
+		now,
+		generateTimestamps(len(spans), now, 100),
+	)
+
+	calculateCheckpointSize("1000 unique timestamps",
+		spans,
+		now,
+		generateTimestamps(len(spans), now, 1000),
+	)
 }

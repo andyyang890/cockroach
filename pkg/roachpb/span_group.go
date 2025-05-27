@@ -112,6 +112,8 @@ func (g *SpanGroup) Slice() []Span {
 	return ret
 }
 
+// TODO(yang): Add an All iterator method.
+
 // ForEach calls the provided function for each span stored in the group.
 func (g *SpanGroup) ForEach(op func(span Span) error) error {
 	return g.rg.ForEach(func(r interval.Range) error {
