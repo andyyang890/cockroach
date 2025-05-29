@@ -96,6 +96,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/eventpb"
+	"github.com/cockroachdb/cockroach/pkg/util/metric/aggmetric"
 	"github.com/cockroachdb/cockroach/pkg/util/mon"
 	"github.com/cockroachdb/cockroach/pkg/util/protoutil"
 	"github.com/cockroachdb/cockroach/pkg/util/randident"
@@ -11677,8 +11678,11 @@ func TestCheckpointSize(t *testing.T) {
 			}
 		}
 
-		cp1 := checkpoint.Make(hlc.Timestamp{}, f.Entries(), 1<<20, nil)
-		cp2 := checkpoint.Make2(hlc.Timestamp{}, f.Entries(), 1<<20, nil)
+		aggMetrics1 := checkpoint.NewAggMetrics(aggmetric.MakeBuilder())
+		aggMetrics2 := checkpoint.NewAggMetrics(aggmetric.MakeBuilder())
+
+		cp1 := checkpoint.Make(hlc.Timestamp{}, f.Entries(), 1<<20, aggMetrics1.AddChild())
+		cp2 := checkpoint.Make2(hlc.Timestamp{}, f.Entries(), 1<<20, aggMetrics2.AddChild())
 
 		bytes1, err := protoutil.Marshal(cp1)
 		require.NoError(t, err)
@@ -11716,18 +11720,32 @@ func TestCheckpointSize(t *testing.T) {
 		zstdCompressedBytes1 := zstdCompress(bytes1)
 		zstdCompressedBytes2 := zstdCompress(bytes2)
 
+		formatMetrics := func(m *checkpoint.AggMetrics) string {
+			return fmt.Sprintf("%s", time.Duration(m.CreateNanos.CumulativeSnapshot().Mean()))
+			//return fmt.Sprintf("create=%s,span_count=%d,timestamp_count=%d",
+			//	time.Duration(m.CreateNanos.CumulativeSnapshot().Mean()),
+			//	int64(m.SpanCount.CumulativeSnapshot().Mean()),
+			//	int64(m.TimestampCount.CumulativeSnapshot().Mean()),
+			//)
+		}
+
 		t.Logf(`scenario %s:
     size of normal checkpoint: %s (gzip compressed %s, zstd compressed %s)
     size of horizontally-tiled checkpoint: %s (gzip compressed %s, zstd compressed %s)
-
+    time to create normal checkpoint: %s
+    time to create horizontally-tiled checkpoint: %s
 `, name,
 			humanize.Bytes(uint64(len(bytes1))), humanize.Bytes(uint64(len(gzipCompressedBytes1))), humanize.Bytes(uint64(len(zstdCompressedBytes1))),
 			humanize.Bytes(uint64(len(bytes2))), humanize.Bytes(uint64(len(gzipCompressedBytes2))), humanize.Bytes(uint64(len(zstdCompressedBytes2))),
+			formatMetrics(aggMetrics1),
+			formatMetrics(aggMetrics2),
 		)
 	}
 
 	clock := hlc.NewClockForTesting(nil)
 	now := clock.Now()
+
+	t.Logf("simulating a changefeed watching 10k ranges")
 
 	//calculateCheckpointSize("timestamps are all the same",
 	//	spans,
