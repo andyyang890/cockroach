@@ -165,8 +165,10 @@ func Make2(
 
 	sortedTimestamps := slices.SortedFunc(maps.Keys(spanGroupMap), hlc.Timestamp.Compare)
 	for _, ts := range slices.Backward(sortedTimestamps) {
-		acc.Add(spanGroupMap[ts].Slice()...)
-		for _, sp := range acc.Slice() {
+		for sp := range spanGroupMap[ts].All() {
+			acc.Add(sp)
+		}
+		for sp := range acc.All() {
 			k := convertToSpanKeys(sp)
 			if heapElemMap[k] != nil {
 				heapElemMap[k].effectiveTS = ts

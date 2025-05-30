@@ -5,7 +5,12 @@
 
 package roachpb
 
-import "github.com/cockroachdb/cockroach/pkg/util/interval"
+import (
+	"iter"
+	"slices"
+
+	"github.com/cockroachdb/cockroach/pkg/util/interval"
+)
 
 // A SpanGroup is a specialization of interval.RangeGroup which deals
 // with key spans. The zero-value of a SpanGroup can be used immediately.
@@ -92,27 +97,32 @@ var _ = (*SpanGroup).Len
 
 // Slice will return the contents of the SpanGroup as a slice of Spans.
 func (g *SpanGroup) Slice() []Span {
-	rg := g.rg
-	if rg == nil {
-		return nil
-	}
-	n := rg.Len()
-	if n == 0 {
-		return nil
-	}
-	ret := make([]Span, 0, n)
-	it := rg.Iterator()
-	for {
-		rng, next := it.Next()
-		if !next {
-			break
-		}
-		ret = append(ret, r2s(rng))
-	}
-	return ret
+	return slices.Collect(g.All())
 }
 
-// TODO(yang): Add an All iterator method.
+// All returns an iterator over the spans in the SpanGroup.
+func (g *SpanGroup) All() iter.Seq[Span] {
+	return func(yield func(Span) bool) {
+		rg := g.rg
+		if rg == nil {
+			return
+		}
+		n := rg.Len()
+		if n == 0 {
+			return
+		}
+		it := rg.Iterator()
+		for {
+			rng, next := it.Next()
+			if !next {
+				break
+			}
+			if !yield(r2s(rng)) {
+				return
+			}
+		}
+	}
+}
 
 // ForEach calls the provided function for each span stored in the group.
 func (g *SpanGroup) ForEach(op func(span Span) error) error {
