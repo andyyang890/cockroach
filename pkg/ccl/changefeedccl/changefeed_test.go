@@ -11681,6 +11681,11 @@ func TestCheckpointSize(t *testing.T) {
 		aggMetrics1 := checkpoint.NewAggMetrics(aggmetric.MakeBuilder())
 		aggMetrics2 := checkpoint.NewAggMetrics(aggmetric.MakeBuilder())
 
+		var numSpans int
+		for range f.Entries() {
+			numSpans++
+		}
+
 		cp1 := checkpoint.Make(hlc.Timestamp{}, f.Entries(), 1<<20, aggMetrics1.AddChild())
 		cp2 := checkpoint.Make2(hlc.Timestamp{}, f.Entries(), 1<<20, aggMetrics2.AddChild())
 
@@ -11721,20 +11726,24 @@ func TestCheckpointSize(t *testing.T) {
 		zstdCompressedBytes2 := zstdCompress(bytes2)
 
 		formatMetrics := func(m *checkpoint.AggMetrics) string {
-			return fmt.Sprintf("%s", time.Duration(m.CreateNanos.CumulativeSnapshot().Mean()))
-			//return fmt.Sprintf("create=%s,span_count=%d,timestamp_count=%d",
-			//	time.Duration(m.CreateNanos.CumulativeSnapshot().Mean()),
-			//	int64(m.SpanCount.CumulativeSnapshot().Mean()),
-			//	int64(m.TimestampCount.CumulativeSnapshot().Mean()),
-			//)
+			//return fmt.Sprintf("%s", time.Duration(m.CreateNanos.CumulativeSnapshot().Mean()))
+			return fmt.Sprintf("create=%s,span_count=%d,timestamp_count=%d",
+				time.Duration(m.CreateNanos.CumulativeSnapshot().Mean()),
+				int64(m.SpanCount.CumulativeSnapshot().Mean()),
+				int64(m.TimestampCount.CumulativeSnapshot().Mean()),
+			)
 		}
 
 		t.Logf(`scenario %s:
+    number of spans before merging with frontier: %d
+    number of spans after merging with frontier: %d
     size of normal checkpoint: %s (gzip compressed %s, zstd compressed %s)
     size of horizontally-tiled checkpoint: %s (gzip compressed %s, zstd compressed %s)
-    time to create normal checkpoint: %s
-    time to create horizontally-tiled checkpoint: %s
+    normal checkpoint metrics: %s
+    horizontally-tiled checkpoint metrics: %s
 `, name,
+			len(spans),
+			numSpans,
 			humanize.Bytes(uint64(len(bytes1))), humanize.Bytes(uint64(len(gzipCompressedBytes1))), humanize.Bytes(uint64(len(zstdCompressedBytes1))),
 			humanize.Bytes(uint64(len(bytes2))), humanize.Bytes(uint64(len(gzipCompressedBytes2))), humanize.Bytes(uint64(len(zstdCompressedBytes2))),
 			formatMetrics(aggMetrics1),
@@ -11744,8 +11753,6 @@ func TestCheckpointSize(t *testing.T) {
 
 	clock := hlc.NewClockForTesting(nil)
 	now := clock.Now()
-
-	t.Logf("simulating a changefeed watching 10k ranges")
 
 	//calculateCheckpointSize("timestamps are all the same",
 	//	spans,
