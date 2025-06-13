@@ -12,8 +12,10 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/checkpoint"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
+	"github.com/cockroachdb/cockroach/pkg/keys"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
 	"github.com/cockroachdb/cockroach/pkg/settings"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/span"
 	"github.com/cockroachdb/errors"
@@ -182,6 +184,38 @@ func (f *CoordinatorFrontier) MakeCheckpoint(
 	maxBytes int64, metrics *checkpoint.Metrics,
 ) *jobspb.TimestampSpansMap {
 	return checkpoint.Make(f.Frontier(), f.Entries(), maxBytes, metrics)
+}
+
+type TablePrefixDecoder interface {
+	DecodeTablePrefix(key roachpb.Key) ([]byte, uint32, error)
+}
+
+type multiTableFrontier struct {
+	codec     keys.SQLCodec
+	frontiers map[descpb.ID]resolvedSpanFrontier
+}
+
+func newMultiTableFrontier(
+	statementTime hlc.Timestamp, initialHighWater hlc.Timestamp, spans ...roachpb.Span,
+) (*multiTableFrontier, error) {
+	for _, sp := range spans {
+		// TODO(yang): Replace with actual codec.
+		codec := keys.SystemSQLCodec
+		_, startKeyTableID, err := codec.DecodeTablePrefix(sp.Key)
+		if err != nil {
+			return nil, err
+		}
+		_, endKeyTableID, err := codec.DecodeTablePrefix(sp.EndKey)
+		if err != nil {
+			return nil, err
+		}
+		if startKeyTableID != endKeyTableID {
+			return nil, errors.AssertionFailedf("span encompassing multiple tables: %s", sp)
+		}
+	}
+	return &multiTableFrontier{
+		// TODO fill in
+	}, nil
 }
 
 // spanFrontier is a type alias to make it possible to embed and forward calls
