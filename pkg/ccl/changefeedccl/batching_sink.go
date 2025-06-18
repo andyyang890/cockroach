@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/util/ctxgroup"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/intsets"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/log/logcrash"
 	"github.com/cockroachdb/cockroach/pkg/util/retry"
 	"github.com/cockroachdb/cockroach/pkg/util/timeutil"
@@ -359,6 +360,11 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 		defer s.metrics.recordSinkIOInflightChange(int64(-batch.numMessages))
 		s.metrics.recordSinkIOInflightChange(int64(batch.numMessages))
 		defer s.metrics.timers().DownstreamClientSend.Start()()
+
+		log.Infof(ctx, "ioHandler before Flush: %d", req.NumMessages())
+		defer func() {
+			log.Infof(ctx, "ioHandler after Flush: %d", req.NumMessages())
+		}()
 
 		return s.client.Flush(ctx, batch.payload)
 	}
