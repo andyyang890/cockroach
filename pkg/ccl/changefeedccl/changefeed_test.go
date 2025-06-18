@@ -1087,7 +1087,7 @@ func TestChangefeedCursor(t *testing.T) {
 		}
 	}
 
-	cdcTest(t, testFn)
+	cdcTest(t, testFn, feedTestForceSink("webhook"))
 }
 
 func TestChangefeedTimestamps(t *testing.T) {
