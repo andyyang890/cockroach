@@ -21,6 +21,7 @@ import (
 	"path"
 	"reflect"
 	"regexp"
+	"runtime/trace"
 	"slices"
 	"sort"
 	"strconv"
@@ -1004,8 +1005,23 @@ func TestChangefeedMultiTable(t *testing.T) {
 
 func TestChangefeedCursor(t *testing.T) {
 	defer leaktest.AfterTest(t)()
-	defer log.Scope(t).Close(t)
+	scope := log.Scope(t)
+	defer scope.Close(t)
 	require.NoError(t, log.SetVModule("event_processing=3,blocking_buffer=2"))
+
+	tf, err := os.CreateTemp(scope.GetDirectory(), "")
+	require.NoError(t, err)
+	require.NoError(t, trace.Start(tf))
+	defer tf.Close()
+
+	defer func() {
+		trace.Stop()
+		if t.Failed() {
+			t.Logf("trace file: %s", tf.Name())
+		} else {
+			require.NoError(t, os.Remove(tf.Name()))
+		}
+	}()
 
 	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 		sqlDB := sqlutils.MakeSQLRunner(s.DB)
