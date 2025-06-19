@@ -342,9 +342,11 @@ func (c *kvEventToRowConsumer) ConsumeEvent(ctx context.Context, ev kvevent.Even
 	// Request CPU time to use for event consumption, block if this time is
 	// unavailable. If there is unused CPU time left from the last call to
 	// Pace, then use that time instead of blocking.
+	log.Infof(ctx, "before Pace in ConsumeEvent")
 	if err := c.pacer.Pace(ctx); err != nil {
 		return err
 	}
+	log.Infof(ctx, "after Pace in ConsumeEvent")
 
 	schemaTimestamp := ev.KV().Value.Timestamp
 	prevSchemaTimestamp := schemaTimestamp
