@@ -415,7 +415,6 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 
 		req, send, err := ioEmitter.AdmitRequest(ctx, batchBuffer)
 		if errors.Is(err, ErrNotEnoughQuota) {
-			log.Infof(ctx, "not enough quota to flush batch %q", topic)
 			// Quota can only be freed by consuming a result.
 			select {
 			case <-ctx.Done():
