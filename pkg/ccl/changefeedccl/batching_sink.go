@@ -476,7 +476,9 @@ func (s *batchingSink) runBatchingWorker(ctx context.Context) {
 			// TODO(yevgeniy): rework this function: this function should simply
 			// return an error, and not rely on "handleError".
 			// It's hard to reason about this functions correctness otherwise.
+			log.Infof(ctx, "before Pace")
 			_ = s.pacer.Pace(ctx)
+			log.Infof(ctx, "after Pace")
 
 			switch r := req.(type) {
 			case *rowEvent:
