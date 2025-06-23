@@ -1862,13 +1862,17 @@ func (cf *changeFrontier) checkpointJobProgress(
 			}
 
 			changefeedProgress := progress.Details.(*jobspb.Progress_Changefeed).Changefeed
-			if cv.IsActive(cf.Ctx(), clusterversion.V25_2) {
-				changefeedProgress.SpanLevelCheckpoint = spanLevelCheckpoint
-				checkpointStr = spanLevelCheckpoint.String()
-			} else {
-				legacyCheckpoint := checkpoint.ConvertToLegacyCheckpoint(spanLevelCheckpoint)
-				changefeedProgress.Checkpoint = legacyCheckpoint
-				checkpointStr = legacyCheckpoint.String()
+
+			// Only rewrite the checkpoint if it's non-nil.
+			if spanLevelCheckpoint != nil {
+				if cv.IsActive(cf.Ctx(), clusterversion.V25_2) {
+					changefeedProgress.SpanLevelCheckpoint = spanLevelCheckpoint
+					checkpointStr = spanLevelCheckpoint.String()
+				} else {
+					legacyCheckpoint := checkpoint.ConvertToLegacyCheckpoint(spanLevelCheckpoint)
+					changefeedProgress.Checkpoint = legacyCheckpoint
+					checkpointStr = legacyCheckpoint.String()
+				}
 			}
 
 			if ptsUpdated, err = cf.manageProtectedTimestamps(ctx, txn, changefeedProgress); err != nil {
