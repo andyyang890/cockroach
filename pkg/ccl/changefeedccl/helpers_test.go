@@ -1911,35 +1911,35 @@ func runWithAndWithoutRegression141453(
 					popCh := make(chan struct{})
 					return kvevent.BlockingBufferTestingKnobs{
 						BeforeAdd: func(ctx context.Context, e kvevent.Event) (context.Context, kvevent.Event) {
-							t.Log("BeforeAdd called")
+							log.Infof(context.Background(), "BeforeAdd called")
 							if e.Type() == kvevent.TypeResolved &&
 								e.Resolved().BoundaryType == jobspb.ResolvedSpan_RESTART {
 								blockPop.Store(true)
-								t.Log("BeforeAdd: set blockPop=true")
+								log.Infof(context.Background(), "BeforeAdd: set blockPop=true")
 							}
 							return ctx, e
 						},
 						BeforePop: func() {
-							t.Logf("BeforePop called")
+							log.Infof(context.Background(), "BeforePop called")
 							if blockPop.Load() {
-								t.Logf("BeforePop: blockPop is true")
+								log.Infof(context.Background(), "BeforePop: blockPop is true")
 								<-popCh
-								t.Logf("BeforePop: popCh closed")
+								log.Infof(context.Background(), "BeforePop: popCh closed")
 							}
 						},
 						BeforeDrain: func(ctx context.Context) context.Context {
-							t.Logf("BeforeDrain called")
+							log.Infof(context.Background(), "BeforeDrain called")
 							ctx, cancel := context.WithCancel(ctx)
 							cancel()
 							return ctx
 						},
 						AfterDrain: func(err error) {
-							t.Logf("AfterDrain called")
+							log.Infof(context.Background(), "AfterDrain called")
 							require.Error(t, err)
 							drainFailedOnce.Store(true)
 						},
 						AfterCloseWithReason: func(err error) {
-							t.Logf("AfterCloseWithReason called")
+							log.Infof(context.Background(), "AfterCloseWithReason called")
 							require.NoError(t, err)
 							close(popCh)
 							blockPop.Store(false)
