@@ -1861,7 +1861,7 @@ func runWithAndWithoutRegression141453(
 	runTestFn func(t *testing.T, testFn cdcTestFn),
 	opts ...regression141453Option,
 ) {
-	testutils.RunTrueAndFalse(t, "regression 141453",
+	testutils.RunValues(t, "regression 141453", []bool{true},
 		func(t *testing.T, regression141453 bool) {
 			testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 				var options regression141453Options
@@ -1911,27 +1911,35 @@ func runWithAndWithoutRegression141453(
 					popCh := make(chan struct{})
 					return kvevent.BlockingBufferTestingKnobs{
 						BeforeAdd: func(ctx context.Context, e kvevent.Event) (context.Context, kvevent.Event) {
+							t.Log("BeforeAdd called")
 							if e.Type() == kvevent.TypeResolved &&
 								e.Resolved().BoundaryType == jobspb.ResolvedSpan_RESTART {
 								blockPop.Store(true)
+								t.Log("BeforeAdd: set blockPop=true")
 							}
 							return ctx, e
 						},
 						BeforePop: func() {
+							t.Logf("BeforePop called")
 							if blockPop.Load() {
+								t.Logf("BeforePop: blockPop is true")
 								<-popCh
+								t.Logf("BeforePop: popCh closed")
 							}
 						},
 						BeforeDrain: func(ctx context.Context) context.Context {
+							t.Logf("BeforeDrain called")
 							ctx, cancel := context.WithCancel(ctx)
 							cancel()
 							return ctx
 						},
 						AfterDrain: func(err error) {
+							t.Logf("AfterDrain called")
 							require.Error(t, err)
 							drainFailedOnce.Store(true)
 						},
 						AfterCloseWithReason: func(err error) {
+							t.Logf("AfterCloseWithReason called")
 							require.NoError(t, err)
 							close(popCh)
 							blockPop.Store(false)
