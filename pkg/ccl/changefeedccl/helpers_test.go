@@ -98,7 +98,7 @@ func waitForSchemaChange(
 		var status string
 		row.Scan(&status)
 		if status != "succeeded" {
-			return fmt.Errorf("Job %s had status %s, wanted 'succeeded'", jobID, status)
+			return fmt.Errorf(`schema change job %s had status %s, wanted "succeeded"`, jobID, status)
 		}
 		return nil
 	})

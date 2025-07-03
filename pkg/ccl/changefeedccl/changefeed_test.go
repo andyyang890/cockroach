@@ -2083,13 +2083,13 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 		})
 
 		// Check that dropping a watched column will backfill the changefeed.
-		sqlDB.Exec(t, `ALTER TABLE hasfams DROP COLUMN a`)
+		waitForSchemaChange(t, sqlDB, `ALTER TABLE hasfams DROP COLUMN a`)
 		assertPayloads(t, cf, []string{
 			`hasfams.id_a: [0]->{"after": {"id": 0}}`,
 		})
 
 		// Check that dropping a watched column will backfill the changefeed.
-		sqlDB.Exec(t, `ALTER TABLE hasfams DROP COLUMN b`)
+		waitForSchemaChange(t, sqlDB, `ALTER TABLE hasfams DROP COLUMN b`)
 		assertPayloads(t, cf, []string{
 			`hasfams.b_and_c: [0]->{"after": {"c": "c"}}`,
 		})
