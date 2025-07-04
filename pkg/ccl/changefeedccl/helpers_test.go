@@ -1928,7 +1928,7 @@ func runWithAndWithoutRegression141453(
 								<-popCh
 								log.Infof(context.Background(), "BeforePop: unblocked because popCh closed")
 							} else {
-								log.Infof(context.Background(), "BeforePop: not blocked")
+								//log.Infof(context.Background(), "BeforePop: not blocked")
 							}
 						},
 						BeforeDrain: func(ctx context.Context) context.Context {
