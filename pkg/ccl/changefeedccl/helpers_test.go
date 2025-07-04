@@ -88,6 +88,9 @@ func maybeDisableDeclarativeSchemaChangesForTest(t testing.TB, sqlDB *sqlutils.S
 func waitForSchemaChange(
 	t testing.TB, sqlDB *sqlutils.SQLRunner, stmt string, arguments ...interface{},
 ) {
+	if log.V(1) {
+		log.Infof(context.TODO(), "executing schema change: %s", stmt)
+	}
 	sqlDB.Exec(t, stmt, arguments...)
 	row := sqlDB.QueryRow(t, "SELECT job_id FROM [SHOW JOBS] WHERE job_type = 'NEW SCHEMA CHANGE' OR job_type ='SCHEMA CHANGE' ORDER BY created DESC LIMIT 1")
 	var jobID string
@@ -1911,7 +1914,7 @@ func runWithAndWithoutRegression141453(
 					popCh := make(chan struct{})
 					return kvevent.BlockingBufferTestingKnobs{
 						BeforeAdd: func(ctx context.Context, e kvevent.Event) (context.Context, kvevent.Event) {
-							log.Infof(context.Background(), "BeforeAdd called")
+							log.Infof(context.Background(), "BeforeAdd called with event: %s", e.String())
 							if e.Type() == kvevent.TypeResolved &&
 								e.Resolved().BoundaryType == jobspb.ResolvedSpan_RESTART {
 								blockPop.Store(true)
