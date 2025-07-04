@@ -2062,7 +2062,7 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
-	require.NoError(t, log.SetVModule("kv_feed=2,changefeed_processors=2"))
+	require.NoError(t, log.SetVModule("kv_feed=2,changefeed_processors=2,scanner=2"))
 
 	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 		sqlDB := sqlutils.MakeSQLRunner(s.DB)
