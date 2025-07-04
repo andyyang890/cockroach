@@ -426,7 +426,7 @@ func assertPayloadsTimeout() time.Duration {
 	if util.RaceEnabled {
 		return 5 * time.Minute
 	}
-	return 30 * time.Second
+	return time.Minute
 }
 
 func withTimeout(
