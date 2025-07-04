@@ -1923,11 +1923,12 @@ func runWithAndWithoutRegression141453(
 							return ctx, e
 						},
 						BeforePop: func() {
-							log.Infof(context.Background(), "BeforePop called")
 							if blockPop.Load() {
-								log.Infof(context.Background(), "BeforePop: blockPop is true")
+								log.Infof(context.Background(), "BeforePop: blocked because blockPop is true")
 								<-popCh
-								log.Infof(context.Background(), "BeforePop: popCh closed")
+								log.Infof(context.Background(), "BeforePop: unblocked because popCh closed")
+							} else {
+								log.Infof(context.Background(), "BeforePop: not blocked")
 							}
 						},
 						BeforeDrain: func(ctx context.Context) context.Context {
@@ -1937,7 +1938,7 @@ func runWithAndWithoutRegression141453(
 							return ctx
 						},
 						AfterDrain: func(err error) {
-							log.Infof(context.Background(), "AfterDrain called")
+							log.Infof(context.Background(), "AfterDrain called with error: %s", err)
 							require.Error(t, err)
 							drainFailedOnce.Store(true)
 						},
