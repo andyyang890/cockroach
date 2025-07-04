@@ -7,6 +7,7 @@ package kvevent
 
 import (
 	"context"
+	"runtime/debug"
 	"time"
 
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
@@ -279,6 +280,7 @@ func (b *blockingBuffer) AcquireMemory(ctx context.Context, n int64) (alloc Allo
 // Add implements Writer interface.
 func (b *blockingBuffer) Add(ctx context.Context, e Event) error {
 	if b.knobs.BeforeAdd != nil {
+		log.Infof(ctx, "Add called with stack trace:\n%s", debug.Stack())
 		ctx, e = b.knobs.BeforeAdd(ctx, e)
 	}
 
