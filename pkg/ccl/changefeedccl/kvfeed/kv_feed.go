@@ -497,11 +497,17 @@ func (f *kvFeed) scanIfShould(
 	if err != nil {
 		return nil, hlc.Timestamp{}, err
 	}
+	if log.V(2) {
+		log.Infof(ctx, "scanIfShould found events: %#v", events)
+	}
 	// This off-by-one is a little weird. It says that if you create a changefeed
 	// at some statement time then you're going to get the table as of that statement
 	// time with an initial backfill but if you use a cursor then you will get the
 	// updates after that timestamp.
 	isInitialScan := initialScan && f.withInitialBackfill
+	if log.V(2) {
+		log.Infof(ctx, "scanIfShould isInitialScan: %t", isInitialScan)
+	}
 	var spansToScan []roachpb.Span
 	if isInitialScan {
 		scanTime = highWater
@@ -536,6 +542,10 @@ func (f *kvFeed) scanIfShould(
 		}
 	} else {
 		return nil, hlc.Timestamp{}, nil
+	}
+
+	if log.V(2) {
+		log.Infof(ctx, "scanIfShould spansToScan: %#v, scanTime: %s", spansToScan, scanTime)
 	}
 
 	// Consume the events up to scanTime.
