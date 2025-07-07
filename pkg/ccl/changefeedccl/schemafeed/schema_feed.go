@@ -489,6 +489,10 @@ func (tf *schemaFeed) peekOrPop(
 //     ----------v1--------|--------------------|--------------------
 //     ld2-------^
 func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.Timestamp) error {
+	if log.V(2) {
+		log.Infof(ctx, "pauseOrResumePolling called")
+	}
+
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
 
@@ -496,6 +500,9 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 
 	// Fast path.
 	if tf.mu.pollingPaused && atOrBefore.LessEq(frontier) {
+		if log.V(2) {
+			log.Infof(ctx, "fast path for pauseOrResumePolling")
+		}
 		return nil
 	}
 
@@ -555,6 +562,9 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 	tf.mu.pollingPaused = true
 	if !frontier.Less(atOrBefore) {
 		return nil
+	}
+	if log.V(2) {
+		log.Infof(ctx, "pauseOrResumePolling advancing frontier from %s to %s", tf.mu.ts.frontier, atOrBefore)
 	}
 	return tf.mu.ts.advanceFrontier(atOrBefore)
 }
