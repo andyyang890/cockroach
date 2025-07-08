@@ -516,6 +516,7 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 		}
 		defer ld1.Release(ctx)
 		desc1 := ld1.Underlying().(catalog.TableDescriptor)
+		log.Infof(ctx, "pauseOrResumePolling: descriptor at frontier: %#v", desc1)
 		if !desc1.IsSchemaLocked() {
 			if log.V(2) {
 				log.Infof(ctx, "desc %d not schema-locked at frontier %s", desc1.GetID(), frontier)
@@ -528,13 +529,14 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 		}
 
 		// Check if target table remains at the same version at atOrBefore.
-		log.Infof(ctx, "pauseOrResumePolling: about to acquire lease for table %d at frontier %s", id, atOrBefore)
+		log.Infof(ctx, "pauseOrResumePolling: about to acquire lease for table %d at atOrBefore %s", id, atOrBefore)
 		ld2, err := tf.leaseMgr.Acquire(ctx, atOrBefore, id)
 		if err != nil {
 			return false, err
 		}
 		defer ld2.Release(ctx)
 		desc2 := ld2.Underlying().(catalog.TableDescriptor)
+		log.Infof(ctx, "pauseOrResumePolling: descriptor at atOrBefore: %#v", desc1)
 		if desc1.GetVersion() != desc2.GetVersion() {
 			if log.V(1) {
 				log.Infof(ctx,
