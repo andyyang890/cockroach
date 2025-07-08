@@ -564,8 +564,12 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 	if !frontier.Less(atOrBefore) {
 		return nil
 	}
+	log.Infof(ctx, "pauseOrResumePolling: advancing frontier to %s", atOrBefore)
+	if err := tf.mu.ts.advanceFrontier(atOrBefore); err != nil {
+		return err
+	}
 	log.Infof(ctx, "pauseOrResumePolling: advanced frontier to %s", atOrBefore)
-	return tf.mu.ts.advanceFrontier(atOrBefore)
+	return nil
 }
 
 // waitForTS blocks until the given timestamp is less than or equal to the
@@ -673,8 +677,12 @@ func (tf *schemaFeed) adjustTimestamps(startTS, endTS hlc.Timestamp, validateErr
 	if endTS.LessEq(frontier) && frontierAdvanceCheckEnabled.Get(&tf.settings.SV) {
 		return nil
 	}
-	log.Infof(context.TODO(), "adjustTimestamps: advance frontier to %s", endTS)
-	return tf.mu.ts.advanceFrontier(endTS)
+	log.Infof(context.TODO(), "adjustTimestamps: advancing frontier to %s", endTS)
+	if err := tf.mu.ts.advanceFrontier(endTS); err != nil {
+		return err
+	}
+	log.Infof(context.TODO(), "adjustTimestamps: advanced frontier to %s", endTS)
+	return nil
 }
 
 func (e TableEvent) String() string {
