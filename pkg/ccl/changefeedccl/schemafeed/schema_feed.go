@@ -317,6 +317,10 @@ func (tf *schemaFeed) primeInitialTableDescs(ctx context.Context) error {
 		}
 	}()
 
+	if log.V(2) {
+		log.Infof(ctx, "primeInitialTableDescs: initial frontier is %s", tf.initialFrontier)
+	}
+
 	return tf.ingestDescriptors(ctx, hlc.Timestamp{}, tf.initialFrontier, initialDescs, tf.validateDescriptor)
 }
 
@@ -357,6 +361,10 @@ func (tf *schemaFeed) periodicallyMaybePollTableHistory(ctx context.Context) err
 // updateTableHistory attempts to advance `frontier` to `endTS` by fetching
 // descriptor versions from the current `frontier` to `endTS`.
 func (tf *schemaFeed) updateTableHistory(ctx context.Context, endTS hlc.Timestamp) error {
+	if log.V(2) {
+		log.Infof(ctx, "updateTableHistory with endTS: %s", endTS)
+	}
+
 	ctx, sp := tracing.ChildSpan(ctx, "changefeed.schemafeed.update_table_history")
 	defer sp.Finish()
 
@@ -511,6 +519,9 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 
 	if canPausePolling, err := tf.targets.EachTableIDWithBool(func(id descpb.ID) (bool, error) {
 		// Check if target table is schema-locked at the current frontier.
+		if log.V(2) {
+			log.Infof(ctx, "about to acquire lease for table %d at frontier %s", id, frontier)
+		}
 		ld1, err := tf.leaseMgr.Acquire(ctx, frontier, id)
 		if err != nil {
 			return false, err
@@ -529,6 +540,9 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 		}
 
 		// Check if target table remains at the same version at atOrBefore.
+		if log.V(2) {
+			log.Infof(ctx, "about to acquire lease for table %d at atOrBefore %s", id, atOrBefore)
+		}
 		ld2, err := tf.leaseMgr.Acquire(ctx, atOrBefore, id)
 		if err != nil {
 			return false, err
@@ -554,11 +568,14 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 		// We swallow any non-terminal errors so that the slow path can be tried
 		// after we resume polling.
 		if log.V(1) {
-			log.Infof(ctx, "got a non-terminal error while checking if polling can be paused: %s", err)
+			log.Infof(ctx, "got a non-terminal error while checking if polling can be paused: %+v", err)
 		}
 		return nil
 	}
 
+	if log.V(2) {
+		log.Infof(ctx, "pauseOrResumePolling: polling paused")
+	}
 	tf.mu.pollingPaused = true
 	if !frontier.Less(atOrBefore) {
 		return nil
