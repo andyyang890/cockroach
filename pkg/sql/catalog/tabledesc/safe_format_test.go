@@ -264,6 +264,30 @@ func TestSafeMessage(t *testing.T) {
 				return mutable.ImmutableCopy().(catalog.TableDescriptor)
 			},
 		},
+		{
+			id:       113,
+			parentID: 21,
+			schema:   "CREATE TABLE foo ()",
+			exp: "tabledesc.immutable: {" +
+				"ID: 113, Version: 1, " +
+				"ModificationTime: \"0,0\", " +
+				"ParentID: 21, ParentSchemaID: 29, " +
+				"State: PUBLIC, " +
+				"SchemaLocked: true, " +
+				"NextColumnID: 2, " +
+				"Columns: [{ID: 1, TypeID: 20, Null: false, Hidden: true, HasDefault: true}], " +
+				"NextFamilyID: 1, " +
+				"Families: [{ID: 0, Columns: [1]}], " +
+				"PrimaryIndex: 1, " +
+				"NextIndexID: 2, " +
+				"Indexes: [{ID: 1, Unique: true, KeyColumns: [{ID: 1, Dir: ASC}]}]" +
+				"}",
+			f: func(mutable *tabledesc.Mutable) catalog.TableDescriptor {
+				mutable.SchemaLocked = true
+				mutable.TestingSetClusterVersion(*mutable.TableDesc())
+				return mutable.ImmutableCopy().(catalog.TableDescriptor)
+			},
+		},
 	} {
 		t.Run("", func(t *testing.T) {
 			desc, err := sql.CreateTestTableDescriptor(
