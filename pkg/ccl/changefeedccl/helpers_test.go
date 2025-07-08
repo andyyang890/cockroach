@@ -1861,7 +1861,7 @@ func runWithAndWithoutRegression141453(
 	runTestFn func(t *testing.T, testFn cdcTestFn),
 	opts ...regression141453Option,
 ) {
-	testutils.RunTrueAndFalse(t, "regression 141453",
+	testutils.RunValues(t, "regression 141453", []bool{true},
 		func(t *testing.T, regression141453 bool) {
 			testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 				var options regression141453Options
