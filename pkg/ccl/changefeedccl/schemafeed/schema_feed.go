@@ -507,15 +507,28 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 	// Always assume we need to resume polling until we've proven otherwise.
 	tf.mu.pollingPaused = false
 
+	getDescriptor := func(ctx context.Context, ts hlc.Timestamp, id descpb.ID) (catalog.TableDescriptor, error) {
+		var tableDesc catalog.TableDescriptor
+		if err := tf.db.DescsTxn(ctx, func(ctx context.Context, txn descs.Txn) error {
+			descriptors := txn.Descriptors()
+			if err := txn.KV().SetFixedTimestamp(ctx, ts); err != nil {
+				return err
+			}
+			var err error
+			tableDesc, err = descriptors.ByIDWithoutLeased(txn.KV()).WithoutNonPublic().Get().Table(ctx, id)
+			return err
+		}); err != nil {
+			return nil, err
+		}
+		return tableDesc, nil
+	}
+
 	if canPausePolling, err := tf.targets.EachTableIDWithBool(func(id descpb.ID) (bool, error) {
 		// Check if target table is schema-locked at the current frontier.
-		log.Infof(ctx, "pauseOrResumePolling: about to acquire lease for table %d at frontier %s", id, frontier)
-		ld1, err := tf.leaseMgr.Acquire(ctx, frontier, id)
+		desc1, err := getDescriptor(ctx, frontier, id)
 		if err != nil {
 			return false, err
 		}
-		defer ld1.Release(ctx)
-		desc1 := ld1.Underlying().(catalog.TableDescriptor)
 		if !desc1.IsSchemaLocked() {
 			if log.V(2) {
 				log.Infof(ctx, "desc %d not schema-locked at frontier %s", desc1.GetID(), frontier)
@@ -528,13 +541,10 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 		}
 
 		// Check if target table remains at the same version at atOrBefore.
-		log.Infof(ctx, "pauseOrResumePolling: about to acquire lease for table %d at frontier %s", id, atOrBefore)
-		ld2, err := tf.leaseMgr.Acquire(ctx, atOrBefore, id)
+		desc2, err := getDescriptor(ctx, atOrBefore, id)
 		if err != nil {
 			return false, err
 		}
-		defer ld2.Release(ctx)
-		desc2 := ld2.Underlying().(catalog.TableDescriptor)
 		if desc1.GetVersion() != desc2.GetVersion() {
 			if log.V(1) {
 				log.Infof(ctx,
