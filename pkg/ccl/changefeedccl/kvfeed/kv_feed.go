@@ -497,6 +497,7 @@ func (f *kvFeed) scanIfShould(
 	if err != nil {
 		return nil, hlc.Timestamp{}, err
 	}
+	log.Infof(ctx, "scanIfShould: found events at or before %s: %#v", scanTime, events)
 	// This off-by-one is a little weird. It says that if you create a changefeed
 	// at some statement time then you're going to get the table as of that statement
 	// time with an initial backfill but if you use a cursor then you will get the

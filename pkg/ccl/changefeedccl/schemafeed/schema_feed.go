@@ -303,6 +303,7 @@ func (tf *schemaFeed) primeInitialTableDescs(ctx context.Context) error {
 		})
 	}
 
+	log.Infof(ctx, "primeInitialTableDecs: fetching initial descriptor versions as of %s", tf.initialFrontier)
 	if err := tf.db.DescsTxn(ctx, initialTableDescsFn); err != nil {
 		return err
 	}
@@ -357,6 +358,7 @@ func (tf *schemaFeed) periodicallyMaybePollTableHistory(ctx context.Context) err
 // updateTableHistory attempts to advance `frontier` to `endTS` by fetching
 // descriptor versions from the current `frontier` to `endTS`.
 func (tf *schemaFeed) updateTableHistory(ctx context.Context, endTS hlc.Timestamp) error {
+	log.Infof(ctx, "updateTableHistory: called with endTS %s", endTS)
 	ctx, sp := tracing.ChildSpan(ctx, "changefeed.schemafeed.update_table_history")
 	defer sp.Finish()
 
@@ -369,6 +371,7 @@ func (tf *schemaFeed) updateTableHistory(ctx context.Context, endTS hlc.Timestam
 	if endTS.LessEq(startTS) {
 		return nil
 	}
+	log.Infof(ctx, "updateTableHistory: fetching descriptor versions from %s to %s", startTS, endTS)
 	descs, err := tf.fetchDescriptorVersions(ctx, startTS, endTS)
 	if err != nil {
 		return err
@@ -489,6 +492,8 @@ func (tf *schemaFeed) peekOrPop(
 //     ----------v1--------|--------------------|--------------------
 //     ld2-------^
 func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.Timestamp) error {
+	log.Infof(ctx, "pauseOrResumePolling: called with atOrBefore %s", atOrBefore)
+
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
 
@@ -504,6 +509,7 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 
 	if canPausePolling, err := tf.targets.EachTableIDWithBool(func(id descpb.ID) (bool, error) {
 		// Check if target table is schema-locked at the current frontier.
+		log.Infof(ctx, "pauseOrResumePolling: about to acquire lease for table %d at frontier %s", id, frontier)
 		ld1, err := tf.leaseMgr.Acquire(ctx, frontier, id)
 		if err != nil {
 			return false, err
@@ -522,6 +528,7 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 		}
 
 		// Check if target table remains at the same version at atOrBefore.
+		log.Infof(ctx, "pauseOrResumePolling: about to acquire lease for table %d at frontier %s", id, atOrBefore)
 		ld2, err := tf.leaseMgr.Acquire(ctx, atOrBefore, id)
 		if err != nil {
 			return false, err
@@ -547,15 +554,17 @@ func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.T
 		// We swallow any non-terminal errors so that the slow path can be tried
 		// after we resume polling.
 		if log.V(1) {
-			log.Infof(ctx, "got a non-terminal error while checking if polling can be paused: %s", err)
+			log.Infof(ctx, "pauseOrResumePolling: got a non-terminal error while checking if polling can be paused: %+v", err)
 		}
 		return nil
 	}
 
+	log.Infof(ctx, "pauseOrResumePolling: polling paused")
 	tf.mu.pollingPaused = true
 	if !frontier.Less(atOrBefore) {
 		return nil
 	}
+	log.Infof(ctx, "pauseOrResumePolling: advanced frontier to %s", atOrBefore)
 	return tf.mu.ts.advanceFrontier(atOrBefore)
 }
 
@@ -664,6 +673,7 @@ func (tf *schemaFeed) adjustTimestamps(startTS, endTS hlc.Timestamp, validateErr
 	if endTS.LessEq(frontier) && frontierAdvanceCheckEnabled.Get(&tf.settings.SV) {
 		return nil
 	}
+	log.Infof(context.TODO(), "adjustTimestamps: advance frontier to %s", endTS)
 	return tf.mu.ts.advanceFrontier(endTS)
 }
 
