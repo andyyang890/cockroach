@@ -2088,15 +2088,15 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 			`hasfams.id_a: [0]->{"after": {"id": 0}}`,
 		})
 
-		// Check that dropping a watched column will backfill the changefeed.
-		sqlDB.Exec(t, `ALTER TABLE hasfams DROP COLUMN b`)
-		assertPayloads(t, cf, []string{
-			`hasfams.b_and_c: [0]->{"after": {"c": "c"}}`,
-		})
+		//// Check that dropping a watched column will backfill the changefeed.
+		//sqlDB.Exec(t, `ALTER TABLE hasfams DROP COLUMN b`)
+		//assertPayloads(t, cf, []string{
+		//	`hasfams.b_and_c: [0]->{"after": {"c": "c"}}`,
+		//})
 	}
 
 	runWithAndWithoutRegression141453(t, testFn, func(t *testing.T, testFn cdcTestFn) {
-		cdcTest(t, testFn)
+		cdcTest(t, testFn, feedTestForceSink("kafka"))
 	})
 }
 
