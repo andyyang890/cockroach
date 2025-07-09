@@ -563,6 +563,7 @@ func (f *kvFeed) scanIfShould(
 	if initialScanOnly {
 		boundaryType = jobspb.ResolvedSpan_EXIT
 	}
+	log.Infof(ctx, "DEBUG SCAN: scanIfShould: about to scan spans %s at %s", spansToBackfill, scanTime)
 	if err := f.scanner.Scan(ctx, f.writer, scanConfig{
 		Spans:     spansToBackfill,
 		Timestamp: scanTime,

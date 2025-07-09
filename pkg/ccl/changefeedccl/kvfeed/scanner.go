@@ -247,8 +247,8 @@ func (p *scanRequestScanner) exportSpan(
 	); err != nil {
 		return err
 	}
-	if log.V(2) {
-		log.Infof(ctx, `finished Scan of %s at %s took %s`,
+	if true {
+		log.Infof(ctx, `DEBUG SCAN: finished Scan of %s at %s took %s`,
 			span, ts.AsOfSystemTime(), timeutil.Since(stopwatchStart))
 	}
 	return nil
@@ -318,8 +318,8 @@ func slurpScanResponse(
 			if err != nil {
 				return errors.Wrapf(err, `decoding changes for %s`, span)
 			}
-			if log.V(3) {
-				log.Infof(ctx, "scanResponse: %s@%s", keys.PrettyPrint(nil, keyBytes), ts)
+			if true {
+				log.Infof(ctx, "DEBUG SCAN: scanResponse: %s@%s", keys.PrettyPrint(nil, keyBytes), ts)
 			}
 			if err = sink.Add(ctx, kvevent.NewBackfillKVEvent(keyBytes, ts, valBytes, withDiff, backfillTS)); err != nil {
 				return errors.Wrapf(err, `buffering changes for %s`, span)
