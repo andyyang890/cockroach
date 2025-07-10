@@ -707,6 +707,7 @@ func (tf *schemaFeed) validateDescriptor(
 				After:  desc,
 			}
 			shouldFilter, err := tf.filter.shouldFilter(ctx, e, tf.targets)
+			log.Infof(ctx, "validateDescriptor: new table event (shouldFilter=%t): %#v", shouldFilter, e)
 			log.VEventf(ctx, 1, "validate shouldFilter %v %v", formatEvent(e), shouldFilter)
 			if err != nil {
 				return changefeedbase.WithTerminalError(err)
