@@ -319,7 +319,7 @@ func slurpScanResponse(
 				return errors.Wrapf(err, `decoding changes for %s`, span)
 			}
 			if true {
-				log.Infof(ctx, "DEBUG SCAN: scanResponse: %s@%s", keys.PrettyPrint(nil, keyBytes), ts)
+				log.Infof(ctx, "DEBUG SCAN: scanResponse: %s@%s (backfillTS: %s", keys.PrettyPrint(nil, keyBytes), ts, backfillTS)
 			}
 			if err = sink.Add(ctx, kvevent.NewBackfillKVEvent(keyBytes, ts, valBytes, withDiff, backfillTS)); err != nil {
 				return errors.Wrapf(err, `buffering changes for %s`, span)

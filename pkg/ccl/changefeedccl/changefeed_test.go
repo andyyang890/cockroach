@@ -2075,16 +2075,16 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 			args = append(args, optOutOfMetamorphicEnrichedEnvelope{reason: "metamorphic enriched envelope does not support column families for webhook sinks"})
 		}
 		// Open up the changefeed.
-		cf := feed(t, f, `CREATE CHANGEFEED FOR TABLE hasfams FAMILY id_a, TABLE hasfams FAMILY b_and_c`, args...)
+		cf := feed(t, f, `CREATE CHANGEFEED FOR TABLE hasfams FAMILY id_a, TABLE hasfams FAMILY b_and_c WITH updated`, args...)
 		defer closeFeed(t, cf)
-		assertPayloads(t, cf, []string{
+		assertPayloadsStripTs(t, cf, []string{
 			`hasfams.b_and_c: [0]->{"after": {"b": "b", "c": "c"}}`,
 			`hasfams.id_a: [0]->{"after": {"a": "a", "id": 0}}`,
 		})
 
 		// Check that dropping a watched column will backfill the changefeed.
 		sqlDB.Exec(t, `ALTER TABLE hasfams DROP COLUMN a`)
-		assertPayloads(t, cf, []string{
+		assertPayloadsStripTs(t, cf, []string{
 			`hasfams.id_a: [0]->{"after": {"id": 0}}`,
 		})
 

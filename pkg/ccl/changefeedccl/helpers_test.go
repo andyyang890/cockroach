@@ -119,7 +119,7 @@ func readNextMessages(
 		m, err := f.Next()
 		if log.V(1) {
 			if m != nil {
-				log.Infof(context.Background(), `msg %s: %s->%s (%s) (%s)`,
+				log.Infof(context.Background(), `DEBUG SINK: msg %s: %s->%s (%s) (%s)`,
 					m.Topic, m.Key, m.Value, m.Resolved, timeutil.Since(lastMessage))
 			} else {
 				log.Infof(context.Background(), `err %v`, err)
@@ -356,7 +356,7 @@ func assertPayloadsBaseErr(
 	}()
 
 	if log.V(1) {
-		log.Infof(ctx, "expected messages: \n%s", strings.Join(expected, "\n"))
+		log.Infof(ctx, "DEBUG SINK: expected messages: \n%s", strings.Join(expected, "\n"))
 	}
 
 	actual, err := readNextMessages(ctx, f, len(expected))
