@@ -2000,7 +2000,7 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 		sqlDB := sqlutils.MakeSQLRunner(s.DB)
 
-		sqlDB.Exec(t, `CREATE TABLE hasfams (id int primary key, a string, b string, c string, FAMILY id_a (id, a), FAMILY b_and_c (b, c))`)
+		sqlDB.Exec(t, `CREATE TABLE hasfams (id int primary key, a string, b string, c string, FAMILY id_a (id, a), FAMILY b_and_c (b, c)) WITH (schema_locked=true)`)
 		sqlDB.Exec(t, `INSERT INTO hasfams values (0, 'a', 'b', 'c')`)
 
 		// Open up the changefeed.
@@ -2012,13 +2012,17 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 		})
 
 		// Check that dropping a watched column will backfill the changefeed.
+		sqlDB.Exec(t, `ALTER TABLE hasfams SET (schema_locked=false)`)
 		sqlDB.Exec(t, `ALTER TABLE hasfams DROP COLUMN a`)
+		sqlDB.Exec(t, `ALTER TABLE hasfams SET (schema_locked=true)`)
 		assertPayloads(t, cf, []string{
 			`hasfams.id_a: [0]->{"after": {"id": 0}}`,
 		})
 
 		// Check that dropping a watched column will backfill the changefeed.
+		sqlDB.Exec(t, `ALTER TABLE hasfams SET (schema_locked=false)`)
 		sqlDB.Exec(t, `ALTER TABLE hasfams DROP COLUMN b`)
+		sqlDB.Exec(t, `ALTER TABLE hasfams SET (schema_locked=true)`)
 		assertPayloads(t, cf, []string{
 			`hasfams.b_and_c: [0]->{"after": {"c": "c"}}`,
 		})
