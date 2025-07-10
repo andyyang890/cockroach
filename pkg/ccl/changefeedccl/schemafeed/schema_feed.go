@@ -103,6 +103,7 @@ func New(
 		metrics:         metrics,
 		tolerances:      tolerances,
 		initialFrontier: initialFrontier,
+		primeDoneCh:     make(chan struct{}),
 	}
 	m.mu.previousTableVersion = make(map[descpb.ID]catalog.TableDescriptor)
 	m.mu.typeDeps = typeDependencyTracker{deps: make(map[descpb.ID][]descpb.ID)}
@@ -163,6 +164,8 @@ type schemaFeed struct {
 		// we know no table events will occur.
 		pollingPaused bool
 	}
+
+	primeDoneCh chan struct{}
 }
 
 type typeDependencyTracker struct {
@@ -337,10 +340,13 @@ func (tf *schemaFeed) primeInitialTableDescs(ctx context.Context) error {
 func (tf *schemaFeed) periodicallyMaybePollTableHistory(ctx context.Context) error {
 	ctx, sp := tracing.ChildSpan(ctx, "changefeed.schemafeed.periodically_maybe_poll_table_history")
 	defer sp.Finish()
-	for {
+	for i := 0; ; i++ {
 		if !tf.pollingPaused() {
 			if err := tf.updateTableHistory(ctx, tf.clock.Now()); err != nil {
 				return err
+			}
+			if i == 0 {
+				close(tf.primeDoneCh)
 			}
 			if tf.metrics != nil {
 				tf.metrics.TableHistoryScans.Inc(1)
@@ -493,6 +499,14 @@ func (tf *schemaFeed) peekOrPop(
 //     ld2-------^
 func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.Timestamp) error {
 	log.Infof(ctx, "pauseOrResumePolling: called with atOrBefore %s", atOrBefore)
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-tf.primeDoneCh:
+	default:
+		return nil
+	}
 
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
