@@ -103,6 +103,7 @@ func New(
 		metrics:         metrics,
 		tolerances:      tolerances,
 		initialFrontier: initialFrontier,
+		primeDoneCh:     make(chan struct{}),
 	}
 	m.mu.previousTableVersion = make(map[descpb.ID]catalog.TableDescriptor)
 	m.mu.typeDeps = typeDependencyTracker{deps: make(map[descpb.ID][]descpb.ID)}
@@ -163,6 +164,8 @@ type schemaFeed struct {
 		// we know no table events will occur.
 		pollingPaused bool
 	}
+
+	primeDoneCh chan struct{}
 }
 
 type typeDependencyTracker struct {
@@ -267,6 +270,7 @@ func (tf *schemaFeed) Run(ctx context.Context) error {
 	if err := tf.primeInitialTableDescs(ctx); err != nil {
 		return err
 	}
+	close(tf.primeDoneCh)
 	// We want to initialize the table history which will pull the initial version
 	// and then begin polling.
 	//
@@ -489,6 +493,16 @@ func (tf *schemaFeed) peekOrPop(
 //     ----------v1--------|--------------------|--------------------
 //     ld2-------^
 func (tf *schemaFeed) pauseOrResumePolling(ctx context.Context, atOrBefore hlc.Timestamp) error {
+	// We need to wait for the schema feed to finish priming its initial
+	// set of descriptors or we may accidentally skip a backfill.
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-tf.primeDoneCh:
+	default:
+		return nil
+	}
+
 	tf.mu.Lock()
 	defer tf.mu.Unlock()
 
