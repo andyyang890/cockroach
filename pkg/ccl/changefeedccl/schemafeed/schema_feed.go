@@ -780,6 +780,11 @@ func (tf *schemaFeed) validateDescriptor(
 				sort.Slice(toSort, func(i, j int) bool {
 					return descLess(toSort[i].After, toSort[j].After)
 				})
+				if !sort.SliceIsSorted(tf.mu.events, func(i, j int) bool {
+					return descLess(tf.mu.events[i].After, tf.mu.events[j].After)
+				}) {
+					return errors.AssertionFailedf("events slice is not sorted")
+				}
 			}
 		}
 		// Add the types used by the table into the dependency tracker.
