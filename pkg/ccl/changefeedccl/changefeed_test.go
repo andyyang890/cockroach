@@ -2042,7 +2042,7 @@ func TestChangefeedColumnDropsOnTheSameTableWithMultipleFamilies(t *testing.T) {
 	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 		sqlDB := sqlutils.MakeSQLRunner(s.DB)
 
-		sqlDB.Exec(t, `CREATE TABLE hasfams (id int primary key, a string, b string, c string, FAMILY id_a (id, a), FAMILY b_and_c (b, c))`)
+		sqlDB.Exec(t, `CREATE TABLE hasfams (id int primary key, a string, b string, c string, FAMILY id_a (id, a), FAMILY b_and_c (b, c)) WITH (schema_locked=true)`)
 		sqlDB.Exec(t, `INSERT INTO hasfams values (0, 'a', 'b', 'c')`)
 
 		// Open up the changefeed.
