@@ -273,7 +273,7 @@ func dropVisibleColumnMutationExists(desc catalog.TableDescriptor) bool {
 		if m.AsColumn() == nil || m.AsColumn().IsHidden() {
 			continue
 		}
-		if m.Dropped() && m.WriteAndDeleteOnly() {
+		if m.Dropped() && m.DeleteOnly() {
 			return true
 		}
 	}
