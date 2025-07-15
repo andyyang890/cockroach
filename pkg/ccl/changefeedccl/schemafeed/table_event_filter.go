@@ -212,7 +212,7 @@ func droppedColumnIsWatched(e TableEvent, targets changefeedbase.Targets) (bool,
 		if m.AsColumn() == nil || m.AsColumn().IsHidden() {
 			continue
 		}
-		if m.Dropped() && m.WriteAndDeleteOnly() && watchedColumnIDs.Contains(int(m.AsColumn().GetID())) {
+		if m.Dropped() && m.DeleteOnly() && watchedColumnIDs.Contains(int(m.AsColumn().GetID())) {
 			return true, nil
 		}
 	}
