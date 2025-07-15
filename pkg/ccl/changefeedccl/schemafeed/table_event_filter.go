@@ -147,12 +147,11 @@ func (filter tableEventFilter) shouldFilter(
 			// For example, we may be dropping a column which is not
 			// monitored by the changefeed.
 			if filterEvent == tableEventDropColumn {
-				// TODO make sure we have test coverage for this
-				//sf, err := shouldFilterDropColumnEvent(e, targets)
-				//if err != nil {
-				//	return false, err
-				//}
-				//shouldFilter = sf && shouldFilter
+				sf, err := shouldFilterDropColumnEvent(e, targets)
+				if err != nil {
+					return false, err
+				}
+				shouldFilter = sf && shouldFilter
 			} else if filterEvent == tableEventAddColumnNoBackfill || filterEvent == tableEventAddColumnWithBackfill {
 				sf, err := shouldFilterAddColumnEvent(e, targets)
 				if err != nil {
