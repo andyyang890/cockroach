@@ -2909,7 +2909,6 @@ func registerCDC(r registry.Registry) {
 		CompatibleClouds: registry.AllExceptIBM,
 		Run:              runMessageTooLarge,
 	})
-
 	for _, perTablePTS := range []bool{false, true} {
 		for _, config := range []struct {
 			numTables    int
@@ -2941,6 +2940,80 @@ func registerCDC(r registry.Registry) {
 			})
 		}
 	}
+	// TODO have this test run with/without to compare
+	r.Add(registry.TestSpec{
+		Name:             "cdc/frontier-persistence-benchmark",
+		Owner:            registry.OwnerCDC,
+		Benchmark:        true,
+		Cluster:          r.MakeClusterSpec(4, spec.CPU(16), spec.WorkloadNode()),
+		CompatibleClouds: registry.AllClouds,
+		Suites:           registry.Suites(registry.Nightly),
+		Timeout:          time.Hour,
+		Run: func(ctx context.Context, t test.Test, c cluster.Cluster) {
+			ct := newCDCTester(ctx, t, c)
+			defer ct.Close()
+
+			db := ct.DB()
+			settings := []string{
+				"SET CLUSTER SETTING changefeed.progress.frontier_persistence.interval = '30s'",
+				// Disable span-level checkpointing.
+				"SET CLUSTER SETTING changefeed.span_checkpoint.interval = '0'",
+				// TODO make this randomly enabled
+				"SET CLUSTER SETTING changefeed.progress.per_table_tracking.enabled = true",
+			}
+			for _, stmt := range settings {
+				if _, err := db.ExecContext(ctx, stmt); err != nil {
+					t.Fatalf("failed to run %q: %v", stmt, err)
+				}
+			}
+
+			// Initialize bank workload with multiple tables
+			numTables := 1_000
+			numRows := 1_000
+			numRanges := 10
+			initCmd := fmt.Sprintf(
+				"./cockroach workload init bank --rows=%d --ranges=%d --num-tables=%d {pgurl%s}",
+				numRows, numRanges, numTables, ct.crdbNodes.RandNode())
+			if err := c.RunE(ctx, option.WithNodes(ct.workloadNode), initCmd); err != nil {
+				t.Fatalf("failed to initialize bank tables: %v", err)
+			}
+
+			// Run bank workload
+			ct.workloadWg.Add(1)
+			ct.mon.Go(func(ctx context.Context) error {
+				defer ct.workloadWg.Done()
+				workloadCmd := fmt.Sprintf(
+					// TODO make the duration longer
+					"./cockroach workload run bank --rows=%d --duration=10m --num-tables=%d {pgurl%s}",
+					numRows, numTables, ct.crdbNodes)
+				return c.RunE(ctx, option.WithNodes(ct.workloadNode), workloadCmd)
+			})
+
+			// Create changefeed targeting all bank tables
+			targetNames := make([]string, 0, numTables)
+			for i := range numTables {
+				targetNames = append(targetNames, fmt.Sprintf("bank.bank_%d", i))
+			}
+
+			feed := ct.newChangefeed(feedArgs{
+				sinkType: nullSink,
+				targets:  targetNames,
+				opts: map[string]string{
+					"initial_scan":             "'no'",
+					"resolved":                 "'3s'",
+					"min_checkpoint_frequency": "'30s'",
+				},
+			})
+
+			// Run latency verifier to ensure changefeed performance
+			ct.runFeedLatencyVerifier(feed, latencyTargets{
+				steadyLatency: 2 * time.Minute,
+			})
+
+			// Wait for workload to complete
+			ct.waitForWorkload()
+		},
+	})
 }
 
 const (
