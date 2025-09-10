@@ -2962,6 +2962,8 @@ func registerCDC(r registry.Registry) {
 					"SET CLUSTER SETTING changefeed.span_checkpoint.interval = '0'",
 					// TODO make this randomly enabled
 					"SET CLUSTER SETTING changefeed.progress.per_table_tracking.enabled = true",
+					// Disable per-table PTS.
+					"SET CLUSTER SETTING changefeed.protected_timestamp.per_table.enabled = false",
 				}
 				for _, stmt := range settings {
 					if _, err := db.ExecContext(ctx, stmt); err != nil {
