@@ -2988,7 +2988,7 @@ func registerCDC(r registry.Registry) {
 					defer ct.workloadWg.Done()
 					workloadCmd := fmt.Sprintf(
 						// TODO make the duration longer
-						"./cockroach workload run bank --rows=%d --duration=10m --num-tables=%d {pgurl%s}",
+						"./cockroach workload run bank --rows=%d --duration=10m --num-tables=%d --tolerate-errors {pgurl%s}",
 						numRows, numTables, ct.crdbNodes)
 					return c.RunE(ctx, option.WithNodes(ct.workloadNode), workloadCmd)
 				})
