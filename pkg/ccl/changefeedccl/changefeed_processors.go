@@ -1868,6 +1868,7 @@ func (cf *changeFrontier) maybeCheckpointJob(
 	if persistFrontier {
 		log.Changefeed.Infof(ctx, "ANDY DEBUG: about to persist frontier")
 		if _, err := cf.checkpointSpanFrontier(ctx); err != nil {
+			log.Changefeed.Warningf(ctx, "ANDY DEBUG: persisting frontier failed: %v", err)
 			return false, err
 		}
 		cf.js.lastFrontierPersistence = timeutil.Now()
