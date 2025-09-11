@@ -2941,7 +2941,7 @@ func registerCDC(r registry.Registry) {
 		}
 	}
 	// TODO have this test run with/without to compare
-	for _, interval := range []string{"30s", "10m"} {
+	for _, interval := range []string{"30s", "5m", "10m"} {
 		r.Add(registry.TestSpec{
 			Name:             fmt.Sprintf("cdc/frontier-persistence-benchmark/interval=%s", interval),
 			Owner:            registry.OwnerCDC,
