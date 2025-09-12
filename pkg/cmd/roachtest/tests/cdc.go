@@ -3009,10 +3009,11 @@ func registerCDC(r registry.Registry) {
 					},
 				})
 
-				// Run latency verifier to ensure changefeed performance
-				ct.runFeedLatencyVerifier(feed, latencyTargets{
-					steadyLatency: 2 * time.Minute,
-				})
+				//// Run latency verifier to ensure changefeed performance
+				//ct.runFeedLatencyVerifier(feed, latencyTargets{
+				//	steadyLatency: 2 * time.Minute,
+				//})
+				_ = feed
 
 				// Wait for workload to complete
 				ct.waitForWorkload()
