@@ -14,10 +14,14 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobfrontier"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
+	"github.com/cockroachdb/cockroach/pkg/roachpb"
+	"github.com/cockroachdb/cockroach/pkg/sql/catalog/desctestutils"
 	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
+	"github.com/cockroachdb/cockroach/pkg/sql/rowenc"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
+	"github.com/cockroachdb/cockroach/pkg/util/encoding"
 	"github.com/cockroachdb/cockroach/pkg/util/leaktest"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/errors"
@@ -119,23 +123,64 @@ func TestChangefeedFrontierRestore(t *testing.T) {
 		sqlDB := sqlutils.MakeSQLRunner(s.DB)
 		ctx := context.Background()
 
+		// Create a table with a single int primary key column
+		sqlDB.Exec(t, "CREATE TABLE foo (a INT PRIMARY KEY)")
+
+		// Insert some initial data
+		sqlDB.Exec(t, "INSERT INTO foo VALUES (1), (2), (3)")
+
+		// Get the table descriptor to construct the key for row a=1
+		codec := s.Server.Codec()
+		fooDesc := desctestutils.TestingGetPublicTableDescriptor(
+			s.Server.DB(), codec, "d", "foo")
+
+		// Construct the key for row with a=1
+		// First get the index key prefix for the primary index
+		keyPrefix := rowenc.MakeIndexKeyPrefix(
+			codec, fooDesc.GetID(), fooDesc.GetPrimaryIndexID())
+
+		// Encode the value 1 as the primary key
+		key := keyPrefix
+		key = encoding.EncodeVarintAscending(key, 1)
+
+		// Create a span that contains just this one key
+		targetSpan := roachpb.Span{
+			Key:    key,
+			EndKey: roachpb.Key(key).Next(),
+		}
+
 		// Set up testing knob to filter out row with a=1
 		knobs := s.Server.TestingKnobs().
 			DistSQL.(*execinfra.TestingKnobs).
 			Changefeed.(*TestingKnobs)
 
 		knobs.ChangeFrontierKnobs.OnAggregatorProgress = func(resolvedSpans *jobspb.ResolvedSpans) error {
-			// Filter out the row where a=1 by removing its span from the resolved spans
-			// This will cause that span to lag behind
-			// TODO: Implement filtering logic here to modify resolvedSpans
+			// Use SpanGroup to subtract the target span from each resolved span
+			var filtered []jobspb.ResolvedSpan
+			for _, rs := range resolvedSpans.ResolvedSpans {
+				// Create a SpanGroup with the original span
+				var group roachpb.SpanGroup
+				group.Add(rs.Span)
+
+				// Subtract the span containing row a=1
+				group.Sub(targetSpan)
+
+				// Add the remaining spans to the filtered list, preserving all other fields
+				for _, span := range group.Slice() {
+					// Create a copy of the original ResolvedSpan with the modified span
+					modified := rs
+					modified.Span = span
+					filtered = append(filtered, modified)
+				}
+
+				if len(group.Slice()) != 1 || !group.Slice()[0].Equal(rs.Span) {
+					t.Logf("Modified span: original %s, remaining spans: %v @ %s",
+						rs.Span, group.Slice(), rs.Timestamp)
+				}
+			}
+			resolvedSpans.ResolvedSpans = filtered
 			return nil
 		}
-
-		// Create a table with a single int primary key column
-		sqlDB.Exec(t, "CREATE TABLE foo (a INT PRIMARY KEY)")
-
-		// Insert some initial data
-		sqlDB.Exec(t, "INSERT INTO foo VALUES (1), (2), (3)")
 
 		// Start a changefeed
 		foo := feed(t, f, "CREATE CHANGEFEED FOR foo")
