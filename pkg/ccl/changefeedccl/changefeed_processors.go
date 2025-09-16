@@ -1717,6 +1717,12 @@ func (cf *changeFrontier) noteAggregatorProgress(ctx context.Context, d rowenc.E
 		log.Changefeed.Infof(ctx, "progress update from aggregator: %#v", resolvedSpans)
 	}
 
+	if cf.knobs.ChangeFrontierKnobs.OnAggregatorProgress != nil {
+		if err := cf.knobs.ChangeFrontierKnobs.OnAggregatorProgress(&resolvedSpans); err != nil {
+			return err
+		}
+	}
+
 	cf.maybeMarkJobIdle(resolvedSpans.Stats.RecentKvCount)
 
 	for _, resolved := range resolvedSpans.ResolvedSpans {
