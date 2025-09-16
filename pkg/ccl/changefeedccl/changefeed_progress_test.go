@@ -91,3 +91,24 @@ func TestChangefeedFrontierPersistence(t *testing.T) {
 
 	cdcTest(t, testFn, feedTestEnterpriseSinks)
 }
+
+// TestChangefeedFrontierRestore verifies that changefeeds will correctly
+// restore progress from persisted span frontiers.
+func TestChangefeedFrontierRestore(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+	defer log.Scope(t).Close(t)
+
+	// TODO test initial scan
+	// TODO test lagging spans
+	// TODO test schema change backfill
+
+	// TODO for each of these cases, we need to make sure that there are spans at
+	// different timestamps, through some form of lag
+
+	// TODO we can ensure that the span frontier looks like what we'd expect
+
+	// TODO also use updated(?) and strip TS to make sure we get the same message
+	// again for the messages we want and not the other
+
+	// TODO create a table and split it into two ranges and have one row in each
+}
