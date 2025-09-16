@@ -14,6 +14,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobfrontier"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
+	"github.com/cockroachdb/cockroach/pkg/sql/execinfra"
 	"github.com/cockroachdb/cockroach/pkg/sql/isql"
 	"github.com/cockroachdb/cockroach/pkg/testutils"
 	"github.com/cockroachdb/cockroach/pkg/testutils/sqlutils"
@@ -98,6 +99,8 @@ func TestChangefeedFrontierRestore(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
+	// TODO look at TestChangefeedLaggingSpanCheckpointing
+
 	// TODO test initial scan
 	// TODO test lagging spans
 	// TODO test schema change backfill
@@ -111,4 +114,35 @@ func TestChangefeedFrontierRestore(t *testing.T) {
 	// again for the messages we want and not the other
 
 	// TODO create a table and split it into two ranges and have one row in each
+
+	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
+		sqlDB := sqlutils.MakeSQLRunner(s.DB)
+		ctx := context.Background()
+
+		// Set up testing knob to filter out row with a=1
+		knobs := s.Server.TestingKnobs().
+			DistSQL.(*execinfra.TestingKnobs).
+			Changefeed.(*TestingKnobs)
+
+		knobs.ChangeFrontierKnobs.OnAggregatorProgress = func(resolvedSpans *jobspb.ResolvedSpans) error {
+			// Filter out the row where a=1 by removing its span from the resolved spans
+			// This will cause that span to lag behind
+			// TODO: Implement filtering logic here to modify resolvedSpans
+			return nil
+		}
+
+		// Create a table with a single int primary key column
+		sqlDB.Exec(t, "CREATE TABLE foo (a INT PRIMARY KEY)")
+
+		// Insert some initial data
+		sqlDB.Exec(t, "INSERT INTO foo VALUES (1), (2), (3)")
+
+		// Start a changefeed
+		foo := feed(t, f, "CREATE CHANGEFEED FOR foo")
+		defer closeFeed(t, foo)
+
+		_ = ctx
+	}
+
+	cdcTest(t, testFn, feedTestEnterpriseSinks)
 }
