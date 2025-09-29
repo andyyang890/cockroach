@@ -224,7 +224,8 @@ func newResolvedSpanFrontier(
 ) (*resolvedSpanFrontier, error) {
 	sf, err := func() (maybeTablePartitionedFrontier, error) {
 		if perTableTracking {
-			return span.NewMultiFrontierAt(newTableIDPartitioner(codec), initialHighWater, spans...)
+			partitioner := makeTablePartitioner(codec)
+			return span.NewMultiFrontierAt(partitioner.partition, initialHighWater, spans...)
 		}
 		f, err := span.MakeFrontierAt(initialHighWater, spans...)
 		if err != nil {
@@ -474,17 +475,31 @@ type TableCodec interface {
 	TableSpan(tableID uint32) roachpb.Span
 }
 
-func newTableIDPartitioner(codec TableCodec) span.PartitionerFunc[descpb.ID] {
-	return func(sp roachpb.Span) (descpb.ID, error) {
-		_, startKeyTableID, err := codec.DecodeTablePrefix(sp.Key)
-		if err != nil {
-			return 0, errors.Wrapf(err, "error decoding start key in %v", sp)
-		}
-		// Reject any spans that cross table boundaries.
-		tableSpan := codec.TableSpan(startKeyTableID)
-		if !tableSpan.Contains(sp) {
-			return 0, errors.AssertionFailedf("span encompassing multiple tables: %s", sp)
-		}
-		return descpb.ID(startKeyTableID), nil
+type tablePartitioner struct {
+	codec      TableCodec
+	tableSpans map[uint32]roachpb.Span
+}
+
+func makeTablePartitioner(codec TableCodec) tablePartitioner {
+	return tablePartitioner{
+		codec:      codec,
+		tableSpans: make(map[uint32]roachpb.Span),
 	}
+}
+
+func (p tablePartitioner) partition(sp roachpb.Span) (descpb.ID, error) {
+	_, startKeyTableID, err := p.codec.DecodeTablePrefix(sp.Key)
+	if err != nil {
+		return 0, errors.Wrapf(err, "error decoding start key in %v", sp)
+	}
+	tableSpan, ok := p.tableSpans[startKeyTableID]
+	if !ok {
+		tableSpan = p.codec.TableSpan(startKeyTableID)
+		p.tableSpans[startKeyTableID] = tableSpan
+	}
+	// Reject any spans that cross table boundaries.
+	if !tableSpan.Contains(sp) {
+		return 0, errors.AssertionFailedf("span encompassing multiple tables: %s", sp)
+	}
+	return descpb.ID(startKeyTableID), nil
 }
