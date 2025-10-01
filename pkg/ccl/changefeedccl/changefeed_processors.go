@@ -905,7 +905,7 @@ func (ca *changeAggregator) noteResolvedSpan(resolved jobspb.ResolvedSpan) error
 	ctx, sp := tracing.ChildSpan(ca.Ctx(), "changefeed.aggregator.note_resolved_span")
 	defer sp.Finish()
 
-	if log.V(2) {
+	if true {
 		log.Changefeed.Infof(ca.Ctx(), "resolved span from kv feed: %#v", resolved)
 	}
 
@@ -934,6 +934,7 @@ func (ca *changeAggregator) noteResolvedSpan(resolved jobspb.ResolvedSpan) error
 	forceFlush := resolved.BoundaryType != jobspb.ResolvedSpan_NONE
 
 	checkpointFrontier := (advanced && forceFlush) || ca.frontierFlushLimiter.canSave(ctx)
+	log.Changefeed.Infof(ctx, "noteResolvedSpan: checkpointFrontier=%t", checkpointFrontier)
 
 	if checkpointFrontier {
 		now := crtime.NowMono()
@@ -941,6 +942,7 @@ func (ca *changeAggregator) noteResolvedSpan(resolved jobspb.ResolvedSpan) error
 			return err
 		}
 		ca.frontierFlushLimiter.doneSave(now.Elapsed())
+		log.Changefeed.Infof(ctx, "noteResolvedSpan: flushing took %s", now.Elapsed())
 	}
 
 	return nil
