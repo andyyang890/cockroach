@@ -11368,6 +11368,8 @@ func TestChangefeedTopicNames(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
 
+	require.NoError(t, log.SetVModule("helpers_test=1"))
+
 	testFn := func(t *testing.T, s TestServer, f cdctest.TestFeedFactory) {
 		rand, _ := randutil.NewTestRand()
 		cfg := randident.DefaultNameGeneratorConfig()
