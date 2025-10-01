@@ -247,7 +247,7 @@ type sinklessFeed struct {
 var _ cdctest.TestFeed = (*sinklessFeed)(nil)
 
 func timeout() time.Duration {
-	if util.RaceEnabled {
+	if util.RaceEnabled || syncutil.DeadlockEnabled {
 		return 5 * time.Minute
 	}
 	return 30 * time.Second
