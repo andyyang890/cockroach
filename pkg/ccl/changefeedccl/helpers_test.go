@@ -475,7 +475,8 @@ func assertPayloadsTimeout() time.Duration {
 	if util.RaceEnabled || syncutil.DeadlockEnabled {
 		return 5 * time.Minute
 	}
-	return 30 * time.Second
+	panic("false in assertPayloadsTimeout")
+	//return 30 * time.Second
 }
 
 func withTimeout(
