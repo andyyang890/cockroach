@@ -251,13 +251,20 @@ func getTestConfig(fileDir *string, mostlyInline bool) (testConfig logconfig.Con
 			"kv-distribution": {
 				Channels: logconfig.SelectChannels(channel.KV_DISTRIBUTION),
 			},
+			"changefeed": {
+				Channels: logconfig.SelectChannels(channel.CHANGEFEED),
+			},
 			// Also add the WARNING+ events from the separated channels into the
 			// default file group.
 			"default": {
 				Channels: logconfig.ChannelFilters{
 					Filters: map[logpb.Severity]logconfig.ChannelList{
-						severity.WARNING: {Channels: []logpb.Channel{channel.STORAGE, channel.HEALTH,
-							channel.KV_DISTRIBUTION}},
+						severity.WARNING: {Channels: []logpb.Channel{
+							channel.STORAGE,
+							channel.HEALTH,
+							channel.KV_DISTRIBUTION,
+							channel.CHANGEFEED,
+						}},
 					},
 				},
 			},
