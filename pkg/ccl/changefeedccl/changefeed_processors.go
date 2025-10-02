@@ -867,11 +867,13 @@ func (ca *changeAggregator) tick() error {
 			ca.sliMetrics.AdmitLatency.RecordValue(timeutil.Since(event.Timestamp().GoTime()).Nanoseconds())
 		}
 		ca.recentKVCount++
+		log.Changefeed.Infof(ca.Ctx(), "tick: kv event: %#v", event.KV())
 		return ca.eventConsumer.ConsumeEvent(ca.Ctx(), event)
 	case kvevent.TypeResolved:
 		a := event.DetachAlloc()
 		a.Release(ca.Ctx())
 		resolved := event.Resolved()
+		log.Changefeed.Infof(ca.Ctx(), "tick: resolved event: %#v", resolved)
 		if ca.knobs.FilterSpanWithMutation != nil {
 			shouldFilter, err := ca.knobs.FilterSpanWithMutation(&resolved)
 			if err != nil {
@@ -883,6 +885,7 @@ func (ca *changeAggregator) tick() error {
 		}
 		return ca.noteResolvedSpan(resolved)
 	case kvevent.TypeFlush:
+		log.Changefeed.Infof(ca.Ctx(), "tick: flush event")
 		return ca.flushBufferedEvents(ca.Ctx())
 	}
 
