@@ -1824,7 +1824,8 @@ func (cf *changeFrontier) maybeCheckpointJob(
 	}
 
 	if updateCheckpoint || updateHighWater {
-		log.Changefeed.Infof(ctx, "maybeCheckpointJob: start checkpoint job progress")
+		log.Changefeed.Infof(ctx, "maybeCheckpointJob: start checkpoint job progress: "+
+			"updateCheckpoint=%t, updateHighWater=%t", updateCheckpoint, updateHighWater)
 		if cf.knobs.ShouldCheckpointToJobRecord != nil && !cf.knobs.ShouldCheckpointToJobRecord(cf.frontier.Frontier()) {
 			return false, nil
 		}
@@ -1887,10 +1888,12 @@ func (cf *changeFrontier) checkpointJobProgress(
 			// TODO(#153299): Make sure we only updated per-table PTS if we persisted
 			// the span frontier. We'll probably want to move this code out of
 			// checkpointJobProgress and into maybeCheckpointJob.
+			log.Changefeed.Infof(ctx, "checkpointJobProgress: starting manage PTS")
 			if ptsUpdated, err = cf.manageProtectedTimestamps(ctx, txn, changefeedProgress); err != nil {
 				log.Changefeed.Warningf(ctx, "error managing protected timestamp record: %v", err)
 				return err
 			}
+			log.Changefeed.Infof(ctx, "checkpointJobProgress: finish manage PTS")
 
 			if updateRunStatus {
 				progress.StatusMessage = fmt.Sprintf("running: resolved=%s", frontier)
