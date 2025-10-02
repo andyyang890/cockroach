@@ -1917,19 +1917,23 @@ func (cf *changeFrontier) maybePersistFrontier(ctx context.Context) error {
 	ctx, sp := tracing.ChildSpan(ctx, "changefeed.frontier.maybe_persist_frontier")
 	defer sp.Finish()
 
+	log.Changefeed.Infof(ctx, "maybePersistFrontier called")
 	if cf.spec.JobID == 0 ||
 		!cf.evalCtx.Settings.Version.IsActive(ctx, clusterversion.V25_4) ||
 		!cf.frontierPersistenceLimiter.canSave(ctx) {
 		return nil
 	}
 
+	log.Changefeed.Infof(ctx, "maybePersistFrontier: starting job frontier storing")
 	timer := cf.sliMetrics.Timers.FrontierPersistence.Start()
 	if err := cf.FlowCtx.Cfg.DB.Txn(ctx, func(ctx context.Context, txn isql.Txn) error {
 		return jobfrontier.Store(ctx, txn, cf.spec.JobID, "coordinator", cf.frontier)
 	}); err != nil {
+		log.Changefeed.Warningf(ctx, "maybePersistFrontier: job frontier store failed: %v", err)
 		return err
 	}
 	persistDuration := timer.End()
+	log.Changefeed.Infof(ctx, "maybePersistFrontier: persisting took %s", persistDuration)
 	cf.frontierPersistenceLimiter.doneSave(persistDuration)
 	return nil
 }
