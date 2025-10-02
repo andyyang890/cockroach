@@ -1711,7 +1711,7 @@ func (cf *changeFrontier) noteAggregatorProgress(ctx context.Context, d rowenc.E
 		return errors.NewAssertionErrorWithWrappedErrf(err,
 			`unmarshalling aggregator progress update: %x`, raw)
 	}
-	if log.V(2) {
+	if true {
 		log.Changefeed.Infof(ctx, "progress update from aggregator: %#v", resolvedSpans)
 	}
 
@@ -1742,10 +1742,12 @@ func (cf *changeFrontier) noteAggregatorProgress(ctx context.Context, d rowenc.E
 }
 
 func (cf *changeFrontier) forwardFrontier(resolved jobspb.ResolvedSpan) error {
+	log.Changefeed.Infof(cf.Ctx(), "forwardFrontier: about to forward resolved: %#v", resolved)
 	frontierChanged, err := cf.frontier.ForwardResolvedSpan(resolved)
 	if err != nil {
 		return err
 	}
+	log.Changefeed.Infof(cf.Ctx(), "forwardFrontier: done forwarding resolved")
 
 	maybeLogBehindSpan(cf.Ctx(), "coordinator", cf.frontier, frontierChanged, &cf.FlowCtx.Cfg.Settings.SV)
 
@@ -1822,6 +1824,7 @@ func (cf *changeFrontier) maybeCheckpointJob(
 	}
 
 	if updateCheckpoint || updateHighWater {
+		log.Changefeed.Infof(ctx, "maybeCheckpointJob: start checkpoint job progress")
 		if cf.knobs.ShouldCheckpointToJobRecord != nil && !cf.knobs.ShouldCheckpointToJobRecord(cf.frontier.Frontier()) {
 			return false, nil
 		}
@@ -1829,6 +1832,7 @@ func (cf *changeFrontier) maybeCheckpointJob(
 		if err := cf.checkpointJobProgress(ctx, cf.frontier.Frontier(), checkpoint); err != nil {
 			return false, err
 		}
+		log.Changefeed.Infof(ctx, "maybeCheckpointJob: checkpoint job progress took %s", timeutil.Since(checkpointStart))
 		cf.js.checkpointCompleted(ctx, timeutil.Since(checkpointStart))
 	}
 
