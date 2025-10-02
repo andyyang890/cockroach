@@ -6,6 +6,7 @@
 package resolvedspan
 
 import (
+	"context"
 	"iter"
 	"slices"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/settings"
 	"github.com/cockroachdb/cockroach/pkg/sql/catalog/descpb"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
+	"github.com/cockroachdb/cockroach/pkg/util/log"
 	"github.com/cockroachdb/cockroach/pkg/util/span"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/redact"
@@ -280,6 +282,7 @@ func (f *resolvedSpanFrontier) AtBoundary() (
 ) {
 	frontier := f.Frontier()
 	frontierAtBoundary, boundaryType := f.boundary.At(frontier)
+	log.Changefeed.Infof(context.Background(), "resolvedSpanFrontier.AtBoundary: frontier=%s, boundary=%v", frontier, f.boundary)
 	if !frontierAtBoundary {
 		return false, 0, hlc.Timestamp{}
 	}
