@@ -59,7 +59,7 @@ func TestChangefeedNemeses(t *testing.T) {
 		// nemeses_test.go:39: pq: unimplemented: operation is unsupported inside virtual clusters
 		//
 		// TODO(knz): This seems incorrect, see issue #109417.
-		cdcTest(t, testFn, feedTestNoTenants)
+		cdcTest(t, testFn, feedTestNoTenants, feedTestForceSink("cloudstorage"))
 		log.FlushFiles()
 		entries, err := log.FetchEntriesFromFiles(0, math.MaxInt64, 1,
 			regexp.MustCompile("cdc ux violation"), log.WithFlattenedSensitiveData)
