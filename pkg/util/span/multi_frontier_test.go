@@ -262,6 +262,40 @@ func TestMultiFrontier_String(t *testing.T) {
 		sortStr(f.String()))
 }
 
+func TestMultiFrontier_RemovePartition(t *testing.T) {
+	defer leaktest.AfterTest(t)()
+
+	// Create a multi frontier with spans in all three partitions.
+	f, err := span.NewMultiFrontierAt(testingTripartitePartitioner, ts(0),
+		sp('a', 'b'), sp('d', 'e'), sp('f', 'g'))
+	require.NoError(t, err)
+	require.Equal(t, 3, f.Len())
+	require.Equal(t, ts(0), f.Frontier())
+	require.Equal(t, `1: {{a-b}@0} 2: {{d-e}@0} 3: {{f-g}@0}`, multiFrontierStr(f))
+
+	// Forward partitions to different timestamps.
+	_, err = f.Forward(sp('a', 'b'), ts(5))
+	require.NoError(t, err)
+	_, err = f.Forward(sp('d', 'e'), ts(3))
+	require.NoError(t, err)
+	_, err = f.Forward(sp('f', 'g'), ts(7))
+	require.NoError(t, err)
+	require.Equal(t, ts(3), f.Frontier())
+	require.Equal(t, `1: {{a-b}@5} 2: {{d-e}@3} 3: {{f-g}@7}`, multiFrontierStr(f))
+
+	// Remove partition 2 (the minimum frontier).
+	f.RemovePartition(2)
+	require.Equal(t, 2, f.Len())
+	require.Equal(t, ts(5), f.Frontier())
+	require.Equal(t, `1: {{a-b}@5} 3: {{f-g}@7}`, multiFrontierStr(f))
+
+	// Remove a partition that doesn't exist (should be a no-op).
+	f.RemovePartition(2)
+	require.Equal(t, 2, f.Len())
+	require.Equal(t, ts(5), f.Frontier())
+	require.Equal(t, `1: {{a-b}@5} 3: {{f-g}@7}`, multiFrontierStr(f))
+}
+
 func TestMultiFrontier_Frontiers(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 

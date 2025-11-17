@@ -241,6 +241,18 @@ func (f *MultiFrontier[P]) String() string {
 	return buf.String()
 }
 
+// RemovePartition removes a partition (if tracked) from the frontier.
+func (f *MultiFrontier[P]) RemovePartition(partition P) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.mu.frontiers.remove(partition)
+
+	if buildutil.CrdbTestBuild && !f.mu.frontiers.valid() {
+		panic(errors.AssertionFailedf("RemovePartition: heap invariant violation detected"))
+	}
+}
+
 // Frontiers returns an iterator over the sub-frontiers (with read-only access).
 func (f *MultiFrontier[P]) Frontiers() iter.Seq2[P, ReadOnlyFrontier] {
 	return func(yield func(P, ReadOnlyFrontier) bool) {
@@ -315,6 +327,18 @@ func (h *partitionedMultiFrontierHeap[P]) fixup(partition P) error {
 // heapify reinitializes the heap.
 func (h *partitionedMultiFrontierHeap[P]) heapify() {
 	heap.Init(&h.h)
+}
+
+// remove removes the frontier for the given partition from the heap
+// and releases its resources. If the partition doesn't exist, this is a no-op.
+func (h *partitionedMultiFrontierHeap[P]) remove(partition P) {
+	node, ok := h.partitions[partition]
+	if !ok {
+		return
+	}
+	removed := heap.Remove(&h.h, node.index)
+	removed.frontier.Release()
+	delete(h.partitions, partition)
 }
 
 // clear releases and removes all the frontiers in the heap.
