@@ -150,6 +150,7 @@ func alterChangefeedPlanHook(
 			return err
 		}
 
+		// TODO make this function return the new span frontier as an extra argument
 		newTargets, newProgress, newStatementTime, originalSpecs, err := generateAndValidateNewTargets(
 			ctx, exprEval, p,
 			alterChangefeedStmt.Cmds,
@@ -240,6 +241,7 @@ func alterChangefeedPlanHook(
 		if err := j.WithTxn(p.InternalSQLTxn()).Update(ctx, func(
 			txn isql.Txn, md jobs.JobMetadata, ju *jobs.JobUpdater,
 		) error {
+			// TODO in here we'll want to also write the frontier out
 			ju.UpdatePayload(&newPayload)
 			if newProgress != nil {
 				ju.UpdateProgress(newProgress)
@@ -818,6 +820,7 @@ func generateNewProgress(
 			Details: &jobspb.Progress_Changefeed{
 				Changefeed: &jobspb.ChangefeedProgress{
 					ProtectedTimestampRecord: ptsRecord,
+					// TODO this happens implicitly from the frontier being persisted
 					SpanLevelCheckpoint: jobspb.NewTimestampSpansMap(map[hlc.Timestamp]roachpb.Spans{
 						newStatementTime: existingTargetSpans,
 					}),
@@ -883,11 +886,13 @@ func removeSpansFromProgress(progress jobspb.Progress, spansToRemove []roachpb.S
 			checkpointSpansMap[ts] = spans
 		}
 	}
+	// TODO this one is somewhat easy, just drop it from the table frontier
 	progress.GetChangefeed().SpanLevelCheckpoint = jobspb.NewTimestampSpansMap(checkpointSpansMap)
 
 	return nil
 }
 
+// TODO this seems somewhat silly, why not fetch it once and keep it in memory
 func getSpanLevelCheckpointFromProgress(
 	progress jobspb.Progress,
 ) (*jobspb.TimestampSpansMap, error) {

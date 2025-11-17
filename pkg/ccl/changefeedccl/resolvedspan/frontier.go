@@ -224,6 +224,7 @@ func newResolvedSpanFrontier(
 ) (*resolvedSpanFrontier, error) {
 	sf, err := func() (maybeTablePartitionedFrontier, error) {
 		if perTableTracking {
+			// TODO export this
 			return span.NewMultiFrontierAt(newTableIDPartitioner(codec), initialHighWater, spans...)
 		}
 		f, err := span.MakeFrontierAt(initialHighWater, spans...)
@@ -467,6 +468,10 @@ func (f notTablePartitionedFrontier) Frontiers() iter.Seq2[descpb.ID, span.ReadO
 	return func(yield func(descpb.ID, span.ReadOnlyFrontier) bool) {
 		yield(descpb.InvalidID, f.spanFrontier)
 	}
+}
+
+// TODO the remove functionality could live on the MultiFrontier itself
+type TablePartitionedFrontier struct {
 }
 
 // A TableCodec does table-related decoding/encoding.
