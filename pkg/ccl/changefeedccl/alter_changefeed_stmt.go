@@ -15,7 +15,9 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/cdceval"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedbase"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/changefeedvalidators"
+	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/resolvedspan"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
+	"github.com/cockroachdb/cockroach/pkg/jobs/jobfrontier"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobsauth"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
 	"github.com/cockroachdb/cockroach/pkg/roachpb"
@@ -151,7 +153,16 @@ func alterChangefeedPlanHook(
 			return err
 		}
 
-		// TODO make this function return the new span frontier as an extra argument
+		// Get the current frontier from the job
+		var resolvedSpans []jobspb.ResolvedSpan
+		spans, ok, err := jobfrontier.GetAllResolvedSpans(ctx, p.InternalSQLTxn(), jobID)
+		if err != nil {
+			return err
+		}
+		if ok {
+			resolvedSpans = spans
+		}
+
 		newTargets, newProgress, newStatementTime, newFrontier, originalSpecs, err :=
 			generateAndValidateNewTargets(
 				ctx, exprEval, p,
@@ -159,6 +170,7 @@ func alterChangefeedPlanHook(
 				newOptions,
 				prevDetails, job.Progress(),
 				newSinkURI,
+				resolvedSpans,
 			)
 		// TODO write this out
 		_ = newFrontier
@@ -386,6 +398,7 @@ func generateAndValidateNewTargets(
 	prevDetails jobspb.ChangefeedDetails,
 	prevProgress jobspb.Progress,
 	sinkURI string,
+	resolvedSpans []jobspb.ResolvedSpan,
 ) (
 	tree.ChangefeedTableTargets,
 	*jobspb.Progress,
@@ -435,8 +448,22 @@ func generateAndValidateNewTargets(
 	// statement time of the job prior to the alteration of the changefeed. Each
 	// time we add a new set of targets we update the newJobProgress and
 	// newJobStatementTime accordingly.
+	// TODO look at where this is used and set the frontier accordingly
 	newJobProgress := prevProgress
 	newJobStatementTime := prevDetails.StatementTime
+
+	var prevHighWater hlc.Timestamp
+	if ts := prevProgress.GetHighWater(); ts != nil {
+		prevHighWater = *ts
+	}
+	// TODO do we have the tracked spans here?
+	newFrontier, err := resolvedspan.NewTablePartitionedFrontier(
+		prevHighWater,
+		nil, // TODO
+	)
+	if err != nil {
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
+	}
 
 	statementTime := hlc.Timestamp{
 		WallTime: p.ExtendedEvalContext().GetStmtTimestamp().UnixNano(),
@@ -597,6 +624,7 @@ func generateAndValidateNewTargets(
 			// targets. Hence, the user must explicitly state that they want an
 			// initial scan performed on the new targets.
 			newJobProgress, newJobStatementTime, err = generateNewProgress(
+				// TODO handle this one
 				newJobProgress,
 				newJobStatementTime,
 				existingTargetSpans,
@@ -669,6 +697,7 @@ func generateAndValidateNewTargets(
 			}
 		}
 		droppedTargetSpans := fetchSpansForDescs(p, droppedSpanIDs)
+		// TODO handle this one
 		if err := removeSpansFromProgress(newJobProgress, droppedTargetSpans); err != nil {
 			return nil, nil, hlc.Timestamp{}, nil, nil, err
 		}
