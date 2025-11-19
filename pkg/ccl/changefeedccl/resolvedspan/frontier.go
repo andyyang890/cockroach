@@ -224,8 +224,7 @@ func newResolvedSpanFrontier(
 ) (*resolvedSpanFrontier, error) {
 	sf, err := func() (maybeTablePartitionedFrontier, error) {
 		if perTableTracking {
-			// TODO export this
-			return span.NewMultiFrontierAt(newTableIDPartitioner(codec), initialHighWater, spans...)
+			return NewTablePartitionedFrontier(initialHighWater, codec, spans...)
 		}
 		f, err := span.MakeFrontierAt(initialHighWater, spans...)
 		if err != nil {
@@ -449,8 +448,6 @@ type maybeTablePartitionedFrontier interface {
 	Frontiers() iter.Seq2[descpb.ID, span.ReadOnlyFrontier]
 }
 
-var _ maybeTablePartitionedFrontier = (*span.MultiFrontier[descpb.ID])(nil)
-
 // spanFrontier is a type alias to make it possible to embed and forward calls
 // (e.g. Frontier()) to the underlying span.Frontier.
 type spanFrontier = span.Frontier
@@ -470,8 +467,14 @@ func (f notTablePartitionedFrontier) Frontiers() iter.Seq2[descpb.ID, span.ReadO
 	}
 }
 
-// TODO the remove functionality could live on the MultiFrontier itself
-type TablePartitionedFrontier struct {
+type TablePartitionedFrontier = *span.MultiFrontier[descpb.ID]
+
+var _ maybeTablePartitionedFrontier = TablePartitionedFrontier(nil)
+
+func NewTablePartitionedFrontier(
+	initialHighWater hlc.Timestamp, codec TableCodec, spans ...roachpb.Span,
+) (TablePartitionedFrontier, error) {
+	return span.NewMultiFrontierAt(newTableIDPartitioner(codec), initialHighWater, spans...)
 }
 
 // A TableCodec does table-related decoding/encoding.
