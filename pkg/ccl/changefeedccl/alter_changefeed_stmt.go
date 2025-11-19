@@ -35,6 +35,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/sql/types"
 	"github.com/cockroachdb/cockroach/pkg/util/hlc"
 	"github.com/cockroachdb/cockroach/pkg/util/log"
+	"github.com/cockroachdb/cockroach/pkg/util/span"
 	"github.com/cockroachdb/cockroach/pkg/util/uuid"
 	"github.com/cockroachdb/errors"
 )
@@ -151,13 +152,16 @@ func alterChangefeedPlanHook(
 		}
 
 		// TODO make this function return the new span frontier as an extra argument
-		newTargets, newProgress, newStatementTime, originalSpecs, err := generateAndValidateNewTargets(
-			ctx, exprEval, p,
-			alterChangefeedStmt.Cmds,
-			newOptions,
-			prevDetails, job.Progress(),
-			newSinkURI,
-		)
+		newTargets, newProgress, newStatementTime, newFrontier, originalSpecs, err :=
+			generateAndValidateNewTargets(
+				ctx, exprEval, p,
+				alterChangefeedStmt.Cmds,
+				newOptions,
+				prevDetails, job.Progress(),
+				newSinkURI,
+			)
+		// TODO write this out
+		_ = newFrontier
 		if err != nil {
 			return err
 		}
@@ -386,6 +390,7 @@ func generateAndValidateNewTargets(
 	tree.ChangefeedTableTargets,
 	*jobspb.Progress,
 	hlc.Timestamp,
+	span.Frontier,
 	map[tree.ChangefeedTableTarget]jobspb.ChangefeedTargetSpecification,
 	error,
 ) {
@@ -411,7 +416,7 @@ func generateAndValidateNewTargets(
 	// initial_scan = 'only'.
 	originalInitialScanType, err := opts.GetInitialScanType()
 	if err != nil {
-		return nil, nil, hlc.Timestamp{}, nil, err
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
 	}
 	originalInitialScanOnlyOption := originalInitialScanType == changefeedbase.OnlyInitialScan
 
@@ -443,16 +448,16 @@ func generateAndValidateNewTargets(
 	// perform these validations in the validateNewTargets function.
 	allDescs, err := backupresolver.LoadAllDescs(ctx, p.ExecCfg(), statementTime)
 	if err != nil {
-		return nil, nil, hlc.Timestamp{}, nil, err
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
 	}
 	descResolver, err := backupresolver.NewDescriptorResolver(allDescs)
 	if err != nil {
-		return nil, nil, hlc.Timestamp{}, nil, err
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
 	}
 
 	prevTargets, err := AllTargets(ctx, prevDetails, p.ExecCfg())
 	if err != nil {
-		return nil, nil, hlc.Timestamp{}, nil, err
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
 	}
 	noLongerExist := make(map[string]descpb.ID)
 	if err := prevTargets.EachTarget(func(targetSpec changefeedbase.Target) error {
@@ -493,7 +498,7 @@ func generateAndValidateNewTargets(
 		}
 		return nil
 	}); err != nil {
-		return nil, nil, hlc.Timestamp{}, nil, err
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
 	}
 
 	checkIfCommandAllowed := func() error {
@@ -513,21 +518,21 @@ func generateAndValidateNewTargets(
 		switch v := cmd.(type) {
 		case *tree.AlterChangefeedAddTarget:
 			if err := checkIfCommandAllowed(); err != nil {
-				return nil, nil, hlc.Timestamp{}, nil, err
+				return nil, nil, hlc.Timestamp{}, nil, nil, err
 			}
 
 			targetOpts, err := exprEval.KVOptions(
 				ctx, v.Options, changefeedvalidators.AlterTargetOptionValidations,
 			)
 			if err != nil {
-				return nil, nil, hlc.Timestamp{}, nil, err
+				return nil, nil, hlc.Timestamp{}, nil, nil, err
 			}
 
 			initialScanType, initialScanSet := targetOpts[changefeedbase.OptInitialScan]
 			_, noInitialScanSet := targetOpts[changefeedbase.OptNoInitialScan]
 
 			if initialScanType != `` && initialScanType != `yes` && initialScanType != `no` && initialScanType != `only` {
-				return nil, nil, hlc.Timestamp{}, nil, pgerror.Newf(
+				return nil, nil, hlc.Timestamp{}, nil, nil, pgerror.Newf(
 					pgcode.InvalidParameterValue,
 					`cannot set %q to %q. possible values for initial_scan are "yes", "no", "only", or no value`,
 					changefeedbase.OptInitialScan, initialScanType,
@@ -535,7 +540,7 @@ func generateAndValidateNewTargets(
 			}
 
 			if initialScanSet && noInitialScanSet {
-				return nil, nil, hlc.Timestamp{}, nil, pgerror.Newf(
+				return nil, nil, hlc.Timestamp{}, nil, nil, pgerror.Newf(
 					pgcode.InvalidParameterValue,
 					`cannot specify both %q and %q`, changefeedbase.OptInitialScan,
 					changefeedbase.OptNoInitialScan,
@@ -551,7 +556,7 @@ func generateAndValidateNewTargets(
 			for _, targetDesc := range newTableDescs {
 				tableDesc, ok := targetDesc.(catalog.TableDescriptor)
 				if !ok {
-					return nil, nil, hlc.Timestamp{}, nil, errors.AssertionFailedf("expected table descriptor")
+					return nil, nil, hlc.Timestamp{}, nil, nil, errors.AssertionFailedf("expected table descriptor")
 				}
 				existingTargetSpanIDs = append(existingTargetSpanIDs, spanID{
 					tableID: tableDesc.GetID(),
@@ -563,10 +568,10 @@ func generateAndValidateNewTargets(
 			for _, target := range v.Targets {
 				desc, found, err := getTargetDesc(ctx, p, descResolver, target.TableName)
 				if err != nil {
-					return nil, nil, hlc.Timestamp{}, nil, err
+					return nil, nil, hlc.Timestamp{}, nil, nil, err
 				}
 				if !found {
-					return nil, nil, hlc.Timestamp{}, nil, pgerror.Newf(
+					return nil, nil, hlc.Timestamp{}, nil, nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						`target %q does not exist`,
 						tree.ErrString(&target),
@@ -578,7 +583,7 @@ func generateAndValidateNewTargets(
 				newTableDescs[desc.GetID()] = desc
 				tableDesc, ok := desc.(catalog.TableDescriptor)
 				if !ok {
-					return nil, nil, hlc.Timestamp{}, nil, errors.AssertionFailedf("expected table descriptor")
+					return nil, nil, hlc.Timestamp{}, nil, nil, errors.AssertionFailedf("expected table descriptor")
 				}
 				addedTargetSpanIDs = append(addedTargetSpanIDs, spanID{
 					tableID: tableDesc.GetID(),
@@ -599,18 +604,18 @@ func generateAndValidateNewTargets(
 				withInitialScan,
 			)
 			if err != nil {
-				return nil, nil, hlc.Timestamp{}, nil, err
+				return nil, nil, hlc.Timestamp{}, nil, nil, err
 			}
 			telemetry.CountBucketed(telemetryPath+`.added_targets`, int64(len(v.Targets)))
 		case *tree.AlterChangefeedDropTarget:
 			if err := checkIfCommandAllowed(); err != nil {
-				return nil, nil, hlc.Timestamp{}, nil, err
+				return nil, nil, hlc.Timestamp{}, nil, nil, err
 			}
 
 			for _, target := range v.Targets {
 				desc, found, err := getTargetDesc(ctx, p, descResolver, target.TableName)
 				if err != nil {
-					return nil, nil, hlc.Timestamp{}, nil, err
+					return nil, nil, hlc.Timestamp{}, nil, nil, err
 				}
 				if !found {
 					if id, wasDeleted := noLongerExist[target.TableName.String()]; wasDeleted {
@@ -619,7 +624,7 @@ func generateAndValidateNewTargets(
 						droppedTargets[k] = target
 						continue
 					} else {
-						return nil, nil, hlc.Timestamp{}, nil, pgerror.Newf(
+						return nil, nil, hlc.Timestamp{}, nil, nil, pgerror.Newf(
 							pgcode.InvalidParameterValue,
 							`target %q does not exist`,
 							tree.ErrString(&target),
@@ -630,7 +635,7 @@ func generateAndValidateNewTargets(
 				droppedTargets[k] = target
 				_, recognized := newTargets[k]
 				if !recognized {
-					return nil, nil, hlc.Timestamp{}, nil, pgerror.Newf(
+					return nil, nil, hlc.Timestamp{}, nil, nil, pgerror.Newf(
 						pgcode.InvalidParameterValue,
 						`target %q already not watched by changefeed`,
 						tree.ErrString(&target),
@@ -665,7 +670,7 @@ func generateAndValidateNewTargets(
 		}
 		droppedTargetSpans := fetchSpansForDescs(p, droppedSpanIDs)
 		if err := removeSpansFromProgress(newJobProgress, droppedTargetSpans); err != nil {
-			return nil, nil, hlc.Timestamp{}, nil, err
+			return nil, nil, hlc.Timestamp{}, nil, nil, err
 		}
 	}
 
@@ -680,18 +685,18 @@ func generateAndValidateNewTargets(
 	for _, desc := range newTableDescs {
 		hasSelect, hasChangefeed, err := checkPrivilegesForDescriptor(ctx, p, desc)
 		if err != nil {
-			return nil, nil, hlc.Timestamp{}, nil, err
+			return nil, nil, hlc.Timestamp{}, nil, nil, err
 		}
 		hasSelectPrivOnAllTables = hasSelectPrivOnAllTables && hasSelect
 		hasChangefeedPrivOnAllTables = hasChangefeedPrivOnAllTables && hasChangefeed
 	}
 	if err := authorizeUserToCreateChangefeed(
 		ctx, p, sinkURI, hasSelectPrivOnAllTables, hasChangefeedPrivOnAllTables, tree.ChangefeedLevelTable); err != nil {
-		return nil, nil, hlc.Timestamp{}, nil, err
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
 	}
 
 	if err := validateNewTargets(ctx, p, newTargetList, newJobProgress, newJobStatementTime); err != nil {
-		return nil, nil, hlc.Timestamp{}, nil, err
+		return nil, nil, hlc.Timestamp{}, nil, nil, err
 	}
 
 	return newTargetList, &newJobProgress, newJobStatementTime, originalSpecs, nil
