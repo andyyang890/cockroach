@@ -3163,7 +3163,10 @@ CONFIGURE ZONE USING
 
 					// Configure various cluster settings.
 					for name, value := range map[string]string{
-						"changefeed.progress.frontier_persistence.interval": fmt.Sprintf("'%s'", interval),
+						// Disable leased descriptors for catalog views and locked leasing.
+						"sql.catalog.allow_leased_descriptors.enabled":               "false",
+						"sql.catalog.descriptor_lease.use_locked_timestamps.enabled": "false",
+						"changefeed.progress.frontier_persistence.interval":          fmt.Sprintf("'%s'", interval),
 						// Disable span-level checkpointing since it's not necessary
 						// when frontier persistence is on.
 						"changefeed.span_checkpoint.interval": "'0'",
