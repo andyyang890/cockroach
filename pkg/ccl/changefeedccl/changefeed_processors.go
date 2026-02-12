@@ -22,6 +22,7 @@ import (
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/kvfeed"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/resolvedspan"
 	"github.com/cockroachdb/cockroach/pkg/ccl/changefeedccl/schemafeed"
+	"github.com/cockroachdb/cockroach/pkg/clusterversion"
 	"github.com/cockroachdb/cockroach/pkg/jobs"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobfrontier"
 	"github.com/cockroachdb/cockroach/pkg/jobs/jobspb"
@@ -1812,7 +1813,8 @@ func (cf *changeFrontier) maybeCheckpoint(
 
 	// If the highwater has moved an empty checkpoint will be saved
 	var checkpoint *jobspb.TimestampSpansMap
-	if updateCheckpoint {
+	if updateCheckpoint &&
+		!cf.evalCtx.Settings.Version.IsActive(ctx, clusterversion.V26_2_ChangefeedsStopWritingSpanLevelCheckpoint) {
 		maxBytes := changefeedbase.SpanCheckpointMaxBytes.Get(&cf.FlowCtx.Cfg.Settings.SV)
 		checkpoint = cf.frontier.MakeCheckpoint(maxBytes, cf.sliMetrics.CheckpointMetrics)
 	}
@@ -1943,8 +1945,12 @@ func (cf *changeFrontier) checkpointJobProgress(
 			cf.lastProtectedTimestampUpdate = timeutil.Now()
 		}
 		if log.V(2) {
-			log.Changefeed.Infof(cf.Ctx(), "change frontier persisted highwater=%s and checkpoint=%s",
-				frontier, spanLevelCheckpoint)
+			if spanLevelCheckpoint != nil {
+				log.Changefeed.Infof(cf.Ctx(), "change frontier persisted highwater=%s and span-level checkpoint=%s",
+					frontier, spanLevelCheckpoint)
+			} else {
+				log.Changefeed.Infof(cf.Ctx(), "change frontier persisted highwater=%s", frontier)
+			}
 		}
 	}
 
@@ -1974,6 +1980,10 @@ func (cf *changeFrontier) maybePersistFrontier(ctx context.Context) error {
 			return err
 		}
 		cf.frontierPersistenceLimiter.doneSave(timer.End())
+	}
+
+	if log.V(2) {
+		log.Changefeed.Infof(ctx, "change frontier persisted span frontier=%s", cf.frontier)
 	}
 
 	if cf.knobs.AfterPersistFrontier != nil {
