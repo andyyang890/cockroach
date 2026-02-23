@@ -41,6 +41,15 @@ type VerifyInput struct {
 	// BypassSafetyChecks configures lease transfers to skip safety checks.
 	BypassSafetyChecks bool
 
+	// TargetHasSendQueue indicates that the lease transfer target has a send
+	// queue, meaning it is behind on its raft log. When true (and
+	// BypassSafetyChecks is false), the lease transfer will be rejected because
+	// the target may cause proportional unavailability until it catches up.
+	// When send stream stats are unavailable (e.g. not the leader, RACv2 not
+	// active), callers should leave this false to conservatively allow the
+	// transfer.
+	TargetHasSendQueue bool
+
 	// DesiredLeaseType is the desired lease type for the replica.
 	DesiredLeaseType roachpb.LeaseType
 }
@@ -307,6 +316,11 @@ func verifyTransfer(ctx context.Context, st Settings, i VerifyInput) error {
 	// outgoing lease.
 	if i.BypassSafetyChecks {
 		return nil
+	}
+	if i.TargetHasSendQueue {
+		log.VEventf(ctx, 2, "not initiating lease transfer because the target %s "+
+			"has a send queue", i.NextLeaseHolder)
+		return NewLeaseTransferRejectedBecauseTargetHasSendQueueError(i.NextLeaseHolder)
 	}
 	snapStatus := raftutil.ReplicaMayNeedSnapshot(i.RaftStatus, i.RaftCompacted, i.NextLeaseHolder.ReplicaID)
 	if snapStatus != raftutil.NoSnapshotNeeded {
