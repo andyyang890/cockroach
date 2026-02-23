@@ -2791,8 +2791,7 @@ func TestAlterChangefeedAddDropSameTarget(t *testing.T) {
 		require.NoError(t, feed.Resume())
 		sqlDB.Exec(t, `INSERT INTO bar VALUES(2)`)
 		assertPayloads(t, testFeed, []string{
-			// TODO(#144032): This row should be produced.
-			// `bar: [1]->{"after": {"a": 1}}`,
+			`bar: [1]->{"after": {"a": 1}}`,
 			`bar: [2]->{"after": {"a": 2}}`,
 		})
 	}
