@@ -16,7 +16,6 @@ go_library(
         "//pkg/ccl/multitenantccl",
         "//pkg/ccl/oidcccl",
         "//pkg/ccl/partitionccl",
-        "//pkg/ccl/securityccl/fipsccl",
         "//pkg/ccl/utilccl",
         "//pkg/ccl/workloadccl",
         "//pkg/ccl/workloadccl/cliccl",
@@ -24,6 +23,7 @@ go_library(
         "//pkg/crosscluster/logical",
         "//pkg/crosscluster/physical",
         "//pkg/crosscluster/producer",
+        "//pkg/security/fips",
         "//pkg/server/license",
     ],
 )

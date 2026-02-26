@@ -19,7 +19,6 @@ import (
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/multitenantccl"
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/oidcccl"
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/partitionccl"
-	_ "github.com/cockroachdb/cockroach/pkg/ccl/securityccl/fipsccl"
 	"github.com/cockroachdb/cockroach/pkg/ccl/utilccl"
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/workloadccl"
 	_ "github.com/cockroachdb/cockroach/pkg/ccl/workloadccl/cliccl" // registers fixtures command
@@ -30,6 +29,7 @@ import (
 	_ "github.com/cockroachdb/cockroach/pkg/crosscluster/logical"
 	_ "github.com/cockroachdb/cockroach/pkg/crosscluster/physical"
 	_ "github.com/cockroachdb/cockroach/pkg/crosscluster/producer"
+	_ "github.com/cockroachdb/cockroach/pkg/security/fips"
 	"github.com/cockroachdb/cockroach/pkg/server/license"
 )
 
