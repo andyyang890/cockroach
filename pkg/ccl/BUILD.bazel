@@ -23,7 +23,6 @@ go_library(
         "//pkg/crosscluster/logical",
         "//pkg/crosscluster/physical",
         "//pkg/crosscluster/producer",
-        "//pkg/security/fips",
         "//pkg/server/license",
     ],
 )
