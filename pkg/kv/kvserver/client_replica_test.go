@@ -5868,6 +5868,7 @@ func TestOptimisticEvalWithConcurrentWriters(t *testing.T) {
 func TestLeaseTransferReplicatesLocks(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	defer log.Scope(t).Close(t)
+	skip.UnderDuress(t, "can cause uncooperative lease change under leader leases")
 
 	testutils.SetVModule(t, "cmd_lease=2")
 
