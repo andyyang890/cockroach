@@ -997,9 +997,10 @@ func (r *Replica) AdminTransferLease(
 				"another transfer to a different store is in progress")
 		}
 
-		// Check whether the target has a send queue using the pre-fetched stats.
-		// Reading from the RangeSendStreamStats struct is a plain data access
-		// with no lock dependencies.
+		// Check whether the target has a send queue using the pre-fetched stats
+		// (see the paragraph above about why we pre-fetch before acquiring
+		// repl.mu). Reading from the RangeSendStreamStats struct is a plain data
+		// access with no lock dependencies.
 		var targetHasSendQueue bool
 		if !bypassSafetyChecks {
 			if replStats, ok := sendStreamStats.ReplicaSendStreamStats(
