@@ -434,6 +434,12 @@ jobs:
           # Force push to the fork
           # NOTE: This is safe because this workflow only runs on PRs with 'o-autosolver' label,
           # which are bot-owned branches. We never force push to branches owned by humans.
+          #
+          # In workflow_run context, origin may point to the base repo instead of the fork.
+          # Explicitly set the remote URL to ensure we push to the fork.
+          # The AUTOSOLVER_PAT credentials from checkout's persist-credentials apply to all
+          # github.com URLs via the extraheader, so no token in the URL is needed.
+          git remote set-url origin "https://github.com/${AUTOSOLVER_FORK_OWNER}/${AUTOSOLVER_FORK_REPO}.git"
           HEAD_REF="${{ steps.context.outputs.head_ref }}"
           git push --force origin "$HEAD_REF"
 
