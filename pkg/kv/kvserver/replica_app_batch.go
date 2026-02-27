@@ -42,7 +42,8 @@ type replicaAppBatch struct {
 	r          *Replica
 	applyStats *applyCommittedEntriesStats
 
-	// batch accumulates writes implied by the raft entries in this batch.
+	// batch accumulates writes implied by the raft entries in this batch. If
+	// engines are separated, only contains the StateEngine writes.
 	batch storage.Batch
 	// raftBatch accumulates writes to the raft log engine. It is lazily
 	// initialized when RaftBatch() is called.
